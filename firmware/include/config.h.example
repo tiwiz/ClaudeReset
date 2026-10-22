@@ -1,0 +1,25 @@
+// Configurazione locale del firmware — questo è il modello (.example).
+// Copialo in  firmware/include/config.h  e adatta i valori:
+//
+//   cp include/config.h.example include/config.h && chmod 600 include/config.h
+//
+// config.h è nel .gitignore: le credenziali del wifi non finiscono nel repo.
+// Nota: niente righe che iniziano con '#' se non sono direttive, questo file
+// viene incluso dal compilatore C++.
+
+#pragma once
+
+// --- rete wifi ---
+#define WIFI_SSID   "la-tua-rete"
+#define WIFI_PASS   "la-tua-password"
+
+// --- dove sta il ponte dati (build machine) ---
+#define RING_HOST   "192.168.86.76"
+#define RING_PORT   8790
+#define RING_PATH   "/claude"
+
+// --- ogni quanto chiedere il dato, in secondi ---
+#define POLL_SECONDS 30
+
+// --- fuso orario per l'orario di reset (formato POSIX TZ) ---
+#define TZ_INFO "CET-1CEST,M3.5.0,M10.5.0/3"

@@ -77,12 +77,27 @@ Se c'è `ufw`: `sudo ufw allow from 192.168.86.0/24 to any port 8790 proto tcp`.
 
 Mappa completa, ordine reale dei pad del modulo e geometria del quadrante: `docs/wiring.md`.
 
+## Firmware
+
+`firmware/` — sketch Arduino per D1 mini con TFT_eSPI (pin configurati da `platformio.ini`, niente
+`User_Setup.h` da editare). Anello + arco disegnati come banda di cerchi pieni, ridisegno solo del
+delta perché su ESP8266 il framebuffer non entra. Dettagli, comandi `pio` e cosa controllare al
+primo avvio: `firmware/README.md`.
+
+```bash
+cd firmware
+cp include/config.h.example include/config.h   # wifi + host del poller, poi chmod 600
+~/.venvs/pio/bin/pio run                       # compila
+~/.venvs/pio/bin/pio run -t upload             # flasha
+```
+
 ## Stato
 
 - [x] poller + unit systemd, verificato sulla build machine
-- [ ] firmware ESP8266 (TFT_eSPI, disegno diretto senza framebuffer)
+- [x] firmware ESP8266: compila (RAM 37%, flash 36%) — da provare sul banco
 - [ ] archetto secondario per la finestra a 7 giorni
 - [ ] custodia
+
 
 ## Note
 

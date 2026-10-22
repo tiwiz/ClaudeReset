@@ -1,5 +1,6 @@
 # segreti e configurazione locale — MAI committare
 .env
+firmware/include/config.h
 
 # spazzatura
 __pycache__/
