@@ -1,0 +1,17 @@
+# network_mode: host is required: mDNS is link-local multicast and Docker's bridge
+# does not forward it, so the display would never discover the service.
+services:
+  claudereset:
+    build: .
+    image: claudereset:latest
+    container_name: claudereset
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      PORT: "8790"
+      POLL_SECONDS: "300"
+      TZ: "Europe/Rome"
+      MDNS: "1"
+      MDNS_NAME: "claudereset"
+    volumes:
+      - ./data:/data
