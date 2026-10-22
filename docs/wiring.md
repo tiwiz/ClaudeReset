@@ -48,5 +48,27 @@ Gli angoli del pannello sono fuori dal cerchio: non ci va nulla.
 
 - ESP8266: 240×240 a 16 bit = 115.200 byte, **non** entra nella RAM libera (~40 KB) → niente
   framebuffer: si disegnano traccia, arco e testo e si ridisegna **solo** quando cambia il valore.
-- Libreria: TFT_eSPI (`User_Setup` con driver GC9A01, pin come in tabella) oppure LovyanGFX.
+- Libreria: TFT_eSPI configurato **da `build_flags`** (`-DUSER_SETUP_LOADED=1 -DGC9A01_DRIVER=1` + pin),
+  così non si tocca nessun file della libreria.
 - Polling di `GET /claude` ogni 30-60 s; anello grigio e `--` se `ok=0` o `stale=1`.
+
+## Se lo schermo resta nero
+
+Nell'ordine in cui conviene indagare:
+
+1. **Separa hardware e software**: `cd firmware-test && pio run -e gc9a01 -t upload`. Quel progetto
+   cicla colori pieni e rotazioni, non usa WiFi né `config.h`. Se lì si vede, il problema è nel
+   firmware; se resta nero, è a monte.
+2. **Altri controller**: `pio run -e st7789 -t upload` e `pio run -e ili9341 -t upload` (alcuni moduli
+   rotondi venduti come GC9A01 montano in realtà controller diversi).
+3. **I flag sono davvero applicati?** Con `USER_SETUP_LOADED` TFT_eSPI ignora il suo `User_Setup.h`;
+   per verificarlo: `pio run --target compiledb` e controllare che il comando di compilazione di
+   `TFT_eSPI.cpp` contenga `-DGC9A01_DRIVER=1` e i pin giusti.
+4. **Alimentazione** — il modulo ha 7 pad e **nessun pin di retroilluminazione**: il LED è collegato
+   internamente a VCC, quindi a VCC alimentato il pannello **deve** fare un alone fioco.
+   *Nessun alone = problema di alimentazione*, e nessun driver o mappa pin lo risolverà.
+5. **Giunto freddo su GND** — sintomo tipico, visto dal vivo in questo progetto: lo schermo si accende
+   solo premendo il pad `GND` con un puntale del tester. Non è il puntale che alimenta (un voltmetro
+   presenta ~10 MΩ, non manda corrente): è la **pressione** che ripristina il contatto. Si rifà il
+   giunto sui pad `VCC` e `GND`, che sono gli unici due a portare corrente.
+   Se il modulo è su basette a pin, il punto debole è la saldatura basetta↔pad, non il filo.
