@@ -51,7 +51,7 @@ Gli angoli del pannello sono fuori dal cerchio: non ci va nulla.
   framebuffer: si disegnano traccia, arco e testo e si ridisegna **solo** quando cambia il valore.
 - Libreria: TFT_eSPI configurato **da `build_flags`** (`-DUSER_SETUP_LOADED=1 -DGC9A01_DRIVER=1` + pin),
   così non si tocca nessun file della libreria.
-- Polling di `GET /claude` ogni 30-60 s; anello grigio e `--` se `ok=0` o `stale=1`.
+- Polling di `GET /api/usage` ogni 30-60 s; anello grigio e `--` se `ok=0` o `stale=1`.
 
 ## Se lo schermo resta nero
 
