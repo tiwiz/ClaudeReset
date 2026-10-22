@@ -1,0 +1,30 @@
+[Unit]
+# Ponte dati: utilizzo Claude Code → JSON sulla LAN, per il display tondo.
+# Unit UTENTE (gira come rob, perché deve leggere ~/.claude/.credentials.json).
+# Installazione:
+#   mkdir -p ~/.config/systemd/user
+#   cp systemd/claude-usage.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now claude-usage.service
+Description=Claude Code usage -> LAN JSON bridge
+Documentation=file:%h/projects/claude-usage-ring/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/projects/claude-usage-ring
+# il '-' rende il file opzionale: la config la legge comunque lo script
+EnvironmentFile=-%h/projects/claude-usage-ring/.env
+ExecStart=/usr/bin/python3 %h/projects/claude-usage-ring/poller/claude_usage.py
+Restart=always
+RestartSec=5
+# igiene: niente segreti in giro, niente privilegi inutili
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/projects/claude-usage-ring
+
+[Install]
+WantedBy=default.target

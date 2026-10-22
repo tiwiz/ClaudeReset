@@ -1,0 +1,14 @@
+# segreti e configurazione locale — MAI committare
+.env
+
+# spazzatura
+__pycache__/
+*.pyc
+*.log
+*.tmp
+.DS_Store
+
+# build del firmware
+firmware/.pio/
+firmware/build/
+firmware/*.bin
