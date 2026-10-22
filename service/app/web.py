@@ -312,9 +312,10 @@ def make_handler(app: App, *, dashboard_host: str = "localhost"):
                 return self._json(app.poller.status())
             if route == "/health":
                 snap = app.poller.snapshot()
+                ok = snap.get("ok")
                 return self._json(
-                    {"ok": snap["ok"], "age": snap["age"], "err": snap["err"]},
-                    200 if snap["ok"] else 503,
+                    {"ok": ok, "age": snap.get("age"), "err": snap.get("err", "")},
+                    200 if ok else 503,
                 )
             if route == "/login":
                 if not self._lan_only():
