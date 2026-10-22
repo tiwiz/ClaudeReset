@@ -13,10 +13,19 @@
 #define WIFI_SSID   "la-tua-rete"
 #define WIFI_PASS   "la-tua-password"
 
-// --- dove sta il ponte dati (build machine) ---
-#define RING_HOST   "192.168.86.76"
-#define RING_PORT   8790
-#define RING_PATH   "/claude"
+// --- il servizio: si scopre da solo via mDNS ---
+// Il servizio si annuncia sulla LAN come _claudereset._tcp, e l'annuncio porta con
+// sé indirizzo e porta: il display non ha bisogno di sapere dove sta, e il servizio
+// può traslocare senza riflashare il micro.
+#define MDNS_SERVICE  "claudereset"
+#define SERVICE_PATH  "/api/usage"
+
+// Usati solo se in rete nessuno risponde all'annuncio (mDNS bloccato, servizio spento).
+#define SERVICE_PORT  8790
+#define FALLBACK_HOST "192.168.86.42"
+
+// --- nome con cui il display si presenta in rete ---
+#define DEVICE_NAME   "claude-ring"
 
 // --- ogni quanto chiedere il dato, in secondi ---
 #define POLL_SECONDS 30

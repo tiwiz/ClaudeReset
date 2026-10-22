@@ -1,7 +1,9 @@
 /*
  * Claude Usage Ring — firmware per D1 mini (ESP8266) + GC9A01 240x240
  * -------------------------------------------------------------------
- * Legge  http://<host>:<porta>/claude  sulla LAN e disegna:
+ * Scopre il servizio da solo via mDNS (_claudereset._tcp): IP e porta arrivano
+ * dall'annuncio, quindi il servizio può traslocare senza riflashare. Poi legge
+ * http://<scoperto>:<porta>/api/usage e disegna:
  *   - anello di traccia + arco di avanzamento (arancione)
  *   - percentuale della finestra a 7 giorni al centro
  *   - orario del prossimo reset e countdown sotto
@@ -16,6 +18,7 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
+#include <ESP8266mDNS.h>
 #include <WiFiClient.h>
 #include <TFT_eSPI.h>
 #include <math.h>
@@ -65,6 +68,15 @@ static uint16_t drawnColor = C_ARC;  // tinta usata per l'arco disegnato
 static int     lastState = -1;       // 0 = online, 1 = offline
 static unsigned long lastPoll = 0, lastCountdown = 0;
 static bool    timeSynced = false;
+
+// ---------------------------------------------------------------- servizio via mDNS
+// Il servizio si annuncia come _claudereset._tcp: l'annuncio porta con sé indirizzo e
+// porta, quindi il firmware non ha bisogno di sapere dove sta. L'IP in config.h serve
+// solo da ripiego se in rete nessuno risponde all'annuncio.
+static IPAddress svcIp;
+static uint16_t  svcPort = SERVICE_PORT;
+static bool      svcDiscovered = false;   // l'indirizzo corrente viene dall'annuncio
+static int       failStreak = 0;
 
 // ---------------------------------------------------------------- disegno
 static inline void arcPoint(float deg, float r, int16_t &x, int16_t &y) {
@@ -171,7 +183,7 @@ static void drawOnline(bool full) {
   lastState = 0;
 }
 
-// quadrante offline: anello grigio e "--"
+// quadrante offline: anello grigio, "--" e il motivo in chiaro
 static void drawOffline() {
   if (lastState == 1) return;
   tft.fillScreen(C_BG);
@@ -180,7 +192,11 @@ static void drawOffline() {
   drawnColor = C_ARC;
   textAt("7g", Y_LABEL, &FreeSansBold12pt7b, 1, C_TEXT, C_BG);
   textAt("--", Y_PCT, &FreeSansBold24pt7b, 1, C_TEXT, C_BG);
-  textAt(usage.err[0] ? usage.err : "offline", Y_RESET, &FreeSans9pt7b, 1, C_TEXT, C_BG);
+  // Il motivo sta sulla riga del reset, tagliato per stare dentro la corda del cerchio
+  // a quella altezza. Meglio dire "non autenticato" che ripetere l'ultimo numero.
+  char reason[26];
+  snprintf(reason, sizeof(reason), "%.24s", usage.err[0] ? usage.err : "offline");
+  textAt(reason, Y_RESET, &FreeSans9pt7b, 1, C_TEXT, C_BG);
   // (font 9pt a size 1: le righe di servizio restano piccole per scelta)
   lastState = 1;
 }
@@ -193,6 +209,19 @@ static bool jsonNumber(const String &body, const char *key, float &out) {
   int j = i + pat.length();
   if (body.startsWith("null", j)) return false;
   out = body.substring(j).toFloat();
+  return true;
+}
+
+static bool jsonString(const String &body, const char *key, char *out, size_t n) {
+  String pat = String('"') + key + "\":\"";
+  int i = body.indexOf(pat);
+  if (i < 0) return false;
+  int j = i + pat.length();
+  int k = body.indexOf('"', j);
+  if (k < 0) return false;
+  String s = body.substring(j, k);
+  strncpy(out, s.c_str(), n - 1);
+  out[n - 1] = '\0';
   return true;
 }
 
@@ -210,6 +239,38 @@ static bool wifiUp() {
   return false;
 }
 
+// Chiede chi offre il servizio. Blocca al massimo ~3 s, quindi si chiama solo quando
+// serve: all'avvio, e dopo una serie di errori (il servizio può essere traslocato).
+static bool discoverService(bool loud) {
+  uint32_t answers = MDNS.queryService(MDNS_SERVICE, "tcp", 3000);
+  for (uint32_t i = 0; i < answers; i++) {
+    IPAddress ip  = MDNS.answerIP(i);
+    uint16_t  port = MDNS.answerPort(i);
+    if (ip.isSet() && port) {
+      svcIp = ip;
+      svcPort = port;
+      svcDiscovered = true;
+      MDNS.removeQuery();
+      if (loud) {
+        Serial.printf("[mdns] %s trovato su %s:%u\n", MDNS_SERVICE,
+                      svcIp.toString().c_str(), (unsigned)svcPort);
+      }
+      return true;
+    }
+  }
+  MDNS.removeQuery();
+  svcDiscovered = false;
+  if (!svcIp.isSet()) {
+    svcIp.fromString(FALLBACK_HOST);
+    svcPort = SERVICE_PORT;
+    if (loud) {
+      Serial.printf("[mdns] nessun annuncio, ripiego su %s:%u\n", FALLBACK_HOST,
+                    (unsigned)svcPort);
+    }
+  }
+  return svcIp.isSet();
+}
+
 static void pollUsage() {
   if (!wifiUp()) {
     usage.ok = false; usage.stale = true;
@@ -217,10 +278,13 @@ static void pollUsage() {
     drawOffline();
     return;
   }
+  if (!svcIp.isSet() || !svcDiscovered) discoverService(false);
+
   WiFiClient client;
   HTTPClient http;
   char url[96];
-  snprintf(url, sizeof(url), "http://%s:%d%s", RING_HOST, RING_PORT, RING_PATH);
+  snprintf(url, sizeof(url), "http://%s:%u%s", svcIp.toString().c_str(),
+           (unsigned)svcPort, SERVICE_PATH);
   http.setTimeout(4000);
   http.setReuse(false);
   if (!http.begin(client, url)) {
@@ -233,23 +297,30 @@ static void pollUsage() {
     usage.ok = false; usage.stale = true;
     http.end();
     drawOffline();
+    // Tre errori di fila: probabilmente il servizio non sta più dove l'avevo trovato.
+    if (++failStreak >= 3) {
+      failStreak = 0;
+      Serial.println("[mdns] tre errori di fila: riscoperta del servizio");
+      if (svcDiscovered) { svcIp = IPAddress(); }
+      discoverService(true);
+    }
     return;
   }
+  failStreak = 0;
   String body = http.getString();
   http.end();
   Serial.printf("[poll] %s\n", body.c_str());
 
-  float v, r, age, stale;
-  bool hasPct = jsonNumber(body, "p7", v);   // finestra 7 giorni
-  bool hasOk  = jsonNumber(body, "ok", stale);
+  float ok = 0, v = -1, r = -1, stale = 0;
+  bool hasOk  = jsonNumber(body, "ok", ok);
+  bool hasPct = jsonNumber(body, "p7", v);      // finestra 7 giorni
   bool hasSt  = jsonNumber(body, "stale", stale);
-  (void)hasOk;
 
-  usage.ok    = hasPct && v >= 0 && !(hasSt && stale >= 0.5f);
   usage.stale = hasSt && stale >= 0.5f;
-  if (hasPct) usage.pct  = v;
-  if (jsonNumber(body, "r7", r))   usage.resetSec = (long)r;
-  (void)age;
+  usage.ok    = hasOk && ok >= 0.5f && hasPct && v >= 0 && !usage.stale;
+  if (hasPct) usage.pct = v;
+  if (jsonNumber(body, "r7", r)) usage.resetSec = (long)r;
+  if (!jsonString(body, "err", usage.err, sizeof(usage.err))) usage.err[0] = '\0';
 
   if (usage.ok) {
     usage.millisAtFetch = millis();
@@ -277,17 +348,22 @@ void setup() {
   WiFi.setAutoReconnect(true);
   wifiUp();
 
+  MDNS.begin(DEVICE_NAME);
+  Serial.printf("[mdns] mi presento come %s.local\n", DEVICE_NAME);
+
   configTime(TZ_INFO, "pool.ntp.org", "time.cloudflare.com");
   struct tm tmv;
   timeSynced = getLocalTime(&tmv, 5000);
   Serial.printf("[ntp] orario %s\n", timeSynced ? "sincronizzato" : "non disponibile");
 
+  discoverService(true);
   pollUsage();
   lastPoll = lastCountdown = millis();
 }
 
 void loop() {
   unsigned long now = millis();
+  MDNS.update();          // il responder mDNS va servito, altrimenti le risposte scadono
 
   if (now - lastPoll >= (unsigned long)POLL_SECONDS * 1000UL) {
     lastPoll = now;

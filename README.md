@@ -19,7 +19,7 @@ and the display only ever sees a number.
 │  ClaudeReset service (Docker)      │        │  D1 mini + GC9A01     │
 │  own Claude sign-in, PKCE          │        │  finds it over mDNS   │
 │  refreshes the tokens for you      │───────▶│  GET /api/usage       │
-│  polls Anthropic every 5 min       │  LAN   │  draws every 60 s     │
+│  polls Anthropic every 5 min       │  LAN   │  draws every 30 s     │
 │  caches and serves the numbers     │        │  no secrets on board  │
 └────────────────────────────────────┘        └───────────────────────┘
 ```
@@ -60,16 +60,19 @@ Full details, endpoints, polling policy and security notes: [service/README.md](
 | Offline state | grey ring, `--` in the middle, reason printed on the reset line |
 
 The gauge shows the **7-day window** by default because that is the one you can actually run out of
-over a week; the 5-hour window is still published by the poller and only needs a one-line change in
+over a week; the 5-hour window is still published and only needs a one-line change in
 `firmware/src/main.cpp` (`p7`/`r7` → `p`/`r`).
 
 ## JSON contract
 
+The service and the legacy poller speak the **same compact payload**: the display does not care which
+one answers it. Only the paths differ.
+
 | Endpoint | Returns |
 |---|---|
-| `GET /claude` | compact JSON for the microcontroller (keys below) |
-| `GET /` or `/usage` | human-readable summary |
-| `GET /health` | 200 when the reading is fresh, 503 when it is stuck (`age`, `error`) |
+| `GET /api/usage` (service) · `GET /claude` (legacy) | compact JSON for the microcontroller (keys below) |
+| `GET /` | service: the dashboard · legacy: a human-readable summary |
+| `GET /health` | 200 when the reading is fresh, 503 when it is stuck (`age`, `err`) |
 
 ```json
 {"ok":1,"p":14.0,"r":9206,"p7":65.0,"r7":14006,"age":21,"stale":0,"err":""}
@@ -139,7 +142,7 @@ Run it in the foreground for testing with `python3 poller/claude_usage.py`.
 
 ```bash
 cd firmware
-cp include/config.h.example include/config.h   # wifi + poller host, then chmod 600
+cp include/config.h.example include/config.h   # wifi + device name, then chmod 600
 ~/.venvs/pio/bin/pio run                       # build
 ~/.venvs/pio/bin/pio run -t upload             # flash (board on USB)
 ~/.venvs/pio/bin/pio device monitor            # serial log at 115200
@@ -149,6 +152,24 @@ TFT_eSPI is configured entirely from `build_flags` in `platformio.ini` (`-DUSER_
 plus the driver and pin defines), so no library file is ever edited. There is no framebuffer:
 240×240 at 16 bpp is 115 kB and the ESP8266 has ~40 kB free, so primitives are drawn directly and
 only the delta is repainted.
+
+### How the display finds the service
+
+No IP address is compiled in. The firmware asks the LAN who offers `_claudereset._tcp`
+(`MDNS.queryService`, DNS-SD, up to 3 s) and takes **address and port from the announcement**, so the
+service can move host without anyone re-flashing a board. `FALLBACK_HOST` in `config.h` is only used
+when nothing answers the announcement. After three failed fetches in a row the display drops the
+address it had and asks again — that is a service that moved, not a dead display.
+
+```
+[mdns] mi presento come claude-ring.local
+[ntp] orario sincronizzato
+[mdns] claudereset trovato su 192.168.86.42:8790
+[poll] {"v": 1, "ok": 1, "p": 21.0, "r": 640, "p7": 66.0, "r7": 5440, "age": 300, "stale": 0, "err": ""}
+```
+
+If the service has no sign-in yet, or its token expired, the display says so on the reset line
+(`non autenticato`) instead of repeating the last number as if it were current.
 
 ### Diagnostics
 
@@ -180,8 +201,9 @@ internally) means the problem is power, not drivers. More detail in `docs/wiring
 
 ## Secrets
 
-- The OAuth token is **not** in this repository: it is read at runtime from Claude Code's own
-  credentials file and never logged or served.
+- The OAuth token is **not** in this repository: with the service it lives in a mode-600 file inside
+  a Docker volume; with the legacy poller it is read at runtime from Claude Code's own credentials
+  file. Either way it is never logged and never sent to the display.
 - `.env` and `firmware/include/config.h` hold local configuration (paths, port, wifi) and are
   git-ignored; only the `.example` files are committed.
 - `CLAUDE_OAUTH_TOKEN` exists for testing and lives in `.env` only.
@@ -190,8 +212,8 @@ internally) means the problem is power, not drivers. More detail in `docs/wiring
 
 - [x] firmware on real hardware: panel, wifi, NTP, live values every 30 s
 - [x] 7-day window, pure white text, verified against the real Claude Code quota
-- [x] service with its own sign-in, token refresh, cache and mDNS advertisement (26 tests)
-- [ ] firmware discovers the service over mDNS instead of a fixed IP
+- [x] service with its own sign-in, token refresh, cache and mDNS advertisement (34 tests)
+- [x] firmware discovers the service over mDNS, verified on hardware (found `192.168.86.42:8790` by itself)
 - [ ] web flasher on GitHub Pages
 - [ ] secondary arc for the second window
 - [ ] 3D-printed enclosure
