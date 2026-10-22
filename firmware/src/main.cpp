@@ -196,6 +196,24 @@ static void textAt(const char *s, int16_t y, const GFXfont *font, uint8_t size,
   tft.drawString(s, CX, y, 1);
 }
 
+// Cosa c'è già a schermo. Riscrivere un testo identico è lavoro inutile e si vede:
+// TFT_eSPI ridisegna il rettangolo del testo, e a 27 MHz di SPI la passata si nota.
+static char shownLabel[8] = "";
+static char shownPct[16] = "";
+static char shownReset[24] = "";
+static char shownCountdown[16] = "";
+
+static void textIfChanged(const char *s, int16_t y, const GFXfont *font, uint8_t size,
+                          uint16_t color, char *cache, size_t cacheSize) {
+  if (strncmp(cache, s, cacheSize) == 0) return;
+  snprintf(cache, cacheSize, "%s", s);
+  textAt(s, y, font, size, color, C_BG);
+}
+
+static void forgetShownText() {
+  shownLabel[0] = shownPct[0] = shownReset[0] = shownCountdown[0] = '\0';
+}
+
 static void fmtCountdown(long sec, char *out, size_t n) {
   if (sec < 0)      { snprintf(out, n, "--"); return; }
   if (sec >= 3600)  { snprintf(out, n, "%ldh %02ldm", sec / 3600, (sec % 3600) / 60); }
@@ -222,21 +240,23 @@ static void drawOnline(bool full) {
     drawTrack();
     drawnAngle = 0;
     drawnColor = color;
-    textAt("7g", Y_LABEL, &FreeSansBold12pt7b, 1, C_TEXT, C_BG);
-    pct = (int)lroundf(usage.pct);
+    forgetShownText();   // schermo pulito: i testi vanno riscritti tutti
   }
   drawArc(3.6f * (float)pct, color);
 
+  // I testi vengono dopo l'anello: se si disegnassero prima, durante il ridisegno
+  // completo si vedrebbe la label "7g" da sola sul fondo, prima del resto.
   char buf[24];
+  textIfChanged("7g", Y_LABEL, &FreeSansBold12pt7b, 1, C_TEXT, shownLabel, sizeof(shownLabel));
   snprintf(buf, sizeof(buf), "%d%%", pct);
-  textAt(buf, Y_PCT, &FreeSansBold24pt7b, 1, C_TEXT, C_BG);
+  textIfChanged(buf, Y_PCT, &FreeSansBold24pt7b, 1, C_TEXT, shownPct, sizeof(shownPct));
 
   fmtResetClock(usage.resetSec, buf, sizeof(buf));
-  textAt(buf, Y_RESET, &FreeSansBold9pt7b, 1, C_TEXT, C_BG);
+  textIfChanged(buf, Y_RESET, &FreeSansBold9pt7b, 1, C_TEXT, shownReset, sizeof(shownReset));
 
   char cd[16];
   fmtCountdown(usage.resetSec, cd, sizeof(cd));
-  textAt(cd, Y_CDOWN, &FreeSans9pt7b, 1, C_DIM, C_BG);
+  textIfChanged(cd, Y_CDOWN, &FreeSans9pt7b, 1, C_TEXT, shownCountdown, sizeof(shownCountdown));
 
   lastState = 0;
 }
@@ -248,6 +268,7 @@ static void drawOffline() {
   drawBand(0, 360, C_OFF);
   drawnAngle = 0;
   drawnColor = C_ARC;
+  forgetShownText();   // lo schermo è stato azzerato: niente di ciò che era scritto vale più
   textAt("7g", Y_LABEL, &FreeSansBold12pt7b, 1, C_TEXT, C_BG);
   textAt("--", Y_PCT, &FreeSansBold24pt7b, 1, C_TEXT, C_BG);
   // Il motivo sta sulla riga del reset, tagliato per stare dentro la corda del cerchio
@@ -471,10 +492,10 @@ void loop() {
     if (left < 0) left = 0;
     char cd[16];
     fmtCountdown(left, cd, sizeof(cd));
-    textAt(cd, Y_CDOWN, &FreeSans9pt7b, 1, C_DIM, C_BG);
+    textIfChanged(cd, Y_CDOWN, &FreeSans9pt7b, 1, C_TEXT, shownCountdown, sizeof(shownCountdown));
     char rz[24];
     fmtResetClock(left, rz, sizeof(rz));
-    textAt(rz, Y_RESET, &FreeSansBold9pt7b, 1, C_TEXT, C_BG);
+    textIfChanged(rz, Y_RESET, &FreeSansBold9pt7b, 1, C_TEXT, shownReset, sizeof(shownReset));
   }
 
   delay(25);
