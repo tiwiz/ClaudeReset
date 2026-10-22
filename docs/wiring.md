@@ -98,3 +98,20 @@ il cambio è istantaneo: nessuna richiesta in più.
   Sull'altro lato, il filo del `3V3` del pulsante va tenuto di colore diverso da quello del display.
 - Con un pulsante di tastiera (switch MX) il contatto è momentaneo normalmente aperto: si verifica in
   due secondi col tester in continuità fra i due pin metallici (aperto a riposo, chiuso premuto).
+
+## Stati del quadrante (cosa scrive la riga sotto la percentuale)
+
+| Stato | Riga del reset | Countdown |
+|---|---|---|
+| finestra attiva | `reset HH:MM` (in grassetto) | tempo che manca |
+| finestra **inattiva** (vista 5h, nessuna sessione aperta) | `nessuna sessione` (in tondo) | `--` |
+| dato non leggibile | motivo dell'errore, es. `non autenticato` | `--` |
+
+Perché "nessuna sessione": l'API di Claude restituisce `resets_at: null` finché la finestra delle
+5 ore non è aperta (parte con la prima richiesta), mentre quella settimanale ha sempre un'ancora.
+Il trattino sembrava un dato mancante; a parole si capisce che è uno stato.
+
+Vincolo di spazio: la riga sta dentro la corda del cerchio a `y=169`, che al bordo inferiore del
+testo è ~154 px. In grassetto `nessuna sessione` misura 155 px (esce), in tondo 143 px (ci sta):
+per questo i messaggi vanno in `FreeSans9pt7b` e l'orario in `FreeSansBold9pt7b`. Il firmware
+misura e stampa questi numeri all'avvio (`[layout] ...`).

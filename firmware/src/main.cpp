@@ -233,7 +233,13 @@ static void fmtCountdown(long sec, char *out, size_t n) {
 }
 
 static void fmtResetClock(long sec, char *out, size_t n) {
-  if (!timeSynced || sec < 0) { snprintf(out, n, "reset --:--"); return; }
+  if (!timeSynced) { snprintf(out, n, "reset --:--"); return; }
+  if (sec < 0) {
+    // Finestra inattiva: finché la sessione non parte, Anthropic non manda un reset.
+    // Il trattino sembrava un dato mancante; a parole è più onesto.
+    snprintf(out, n, "%s", view ? "nessuna sessione" : "reset --:--");
+    return;
+  }
   time_t t = time(nullptr) + sec;
   struct tm tmv;
   localtime_r(&t, &tmv);
@@ -264,7 +270,11 @@ static void drawOnline(bool full) {
   textIfChanged(buf, Y_PCT, &FreeSansBold24pt7b, 1, C_TEXT, shownPct, sizeof(shownPct));
 
   fmtResetClock(viewReset(), buf, sizeof(buf));
-  textIfChanged(buf, Y_RESET, &FreeSansBold9pt7b, 1, C_TEXT, shownReset, sizeof(shownReset));
+  // Orario in grassetto (sta stretto), messaggio in tondo: "nessuna sessione" in grassetto
+  // toccherebbe l'anello, e in tondo si legge come informazione di servizio (come il
+  // motivo dello stato offline).
+  textIfChanged(buf, Y_RESET, (timeSynced && viewReset() >= 0) ? &FreeSansBold9pt7b : &FreeSans9pt7b,
+                1, C_TEXT, shownReset, sizeof(shownReset));
 
   char cd[16];
   fmtCountdown(viewReset(), cd, sizeof(cd));
@@ -285,8 +295,10 @@ static void drawOffline() {
   textAt("--", Y_PCT, &FreeSansBold24pt7b, 1, C_TEXT, C_BG);
   // Il motivo sta sulla riga del reset, tagliato per stare dentro la corda del cerchio
   // a quella altezza. Meglio dire "non autenticato" che ripetere l'ultimo numero.
-  char reason[26];
-  snprintf(reason, sizeof(reason), "%.24s", usage.err[0] ? usage.err : "offline");
+  // 16 caratteri in tondo da 9pt sono ~143 px: la corda utile a quell'altezza è ~154.
+  // Oltre, la scritta esce dall'anello (il taglio a 24 di prima era troppo generoso).
+  char reason[20];
+  snprintf(reason, sizeof(reason), "%.16s", usage.err[0] ? usage.err : "offline");
   textAt(reason, Y_RESET, &FreeSans9pt7b, 1, C_TEXT, C_BG);
   // (font 9pt a size 1: le righe di servizio restano piccole per scelta)
   lastState = 1;
@@ -532,6 +544,22 @@ void setup() {
   pinMode(BUTTON_PIN, INPUT_PULLDOWN_16);   // l'unico pin con pull-down interno
 #endif
   Serial.printf("[vista] %s, pulsante su GPIO%d\n", viewLabel(), (int)BUTTON_PIN);
+  // La riga di servizio deve stare dentro la corda del cerchio a quell'altezza: misuriamo
+  // qui, invece di scoprire sul vetro che la scritta più lunga esce.
+  {
+    tft.setFreeFont(&FreeSansBold9pt7b);
+    int dy = (int)Y_RESET - (int)CY;  if (dy < 0) dy = -dy;
+    int inner = R_RING - RING_W / 2;
+    int chord = 2 * (int)sqrtf((float)inner * inner - (float)dy * dy);
+    tft.setFreeFont(&FreeSansBold9pt7b);
+    int wBold = tft.textWidth("nessuna sessione");
+    tft.setFreeFont(&FreeSans9pt7b);
+    int wReg = tft.textWidth("nessuna sessione");
+    int dyBasso = dy + 8;  // bordo inferiore del testo: lì la corda è la più stretta
+    int chordBasso = 2 * (int)sqrtf((float)inner * inner - (float)dyBasso * dyBasso);
+    Serial.printf("[layout] 'nessuna sessione': grassetto %d px, tondo %d px | corda y=%d: %d px (al bordo basso: %d)\n",
+                  wBold, wReg, (int)Y_RESET, chord, chordBasso);
+  }
   improvSerial.setDeviceInfo(ImprovTypes::ChipFamily::CF_ESP8266, "Claude Usage Ring",
                              FIRMWARE_VERSION, DEVICE_NAME);
   improvSerial.onImprovConnected(onImprovConnected);
