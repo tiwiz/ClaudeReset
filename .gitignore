@@ -13,3 +13,7 @@ __pycache__/
 firmware/.pio/
 firmware/build/
 firmware/*.bin
+
+# build di PlatformIO (qualunque progetto della repo)
+.pio/
+**/.pio/

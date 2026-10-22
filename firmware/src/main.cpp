@@ -29,8 +29,8 @@ static const int16_t R_RING  = 103;   // mezzeria dell'anello
 static const int16_t RING_W  = 14;    // spessore dell'anello
 static const int16_t Y_LABEL = 62;    // etichetta "7g"
 static const int16_t Y_PCT   = 118;   // percentuale (alzata a richiesta)
-static const int16_t Y_RESET = 172;   // orario di reset
-static const int16_t Y_CDOWN = 194;   // countdown
+static const int16_t Y_RESET = 169;   // orario di reset
+static const int16_t Y_CDOWN = 191;   // countdown
 static const int16_t PCT_OVER = 80;   // oltre questa soglia l'arco cambia tinta
 
 static const float DEG2RAD = 0.0174532925f;
