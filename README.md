@@ -148,6 +148,23 @@ cp include/config.h.example include/config.h   # wifi + device name, then chmod 
 ~/.venvs/pio/bin/pio device monitor            # serial log at 115200
 ```
 
+Two builds come out of the same sources:
+
+| Environment | Contains | Used for |
+|---|---|---|
+| `d1_mini` | whatever `config.h` says (WiFi, names) | flashing your own board over USB |
+| `flasher` | **no credentials at all** | the image the web flasher publishes |
+
+The `flasher` build compiles with `-DCLAUDE_RING_PUBLIC_BUILD=1`, which skips `config.h`
+entirely; `include/config_defaults.h` (committed) supplies every non-secret default. The WiFi is
+then handed to the board by the browser over the serial cable (Improv protocol) and stored in
+EEPROM, so it survives a reboot. Verified automatically: the check in
+`firmware/lib/improv/README.md` note aside, the release recipe compares the strings of the private
+and public images and refuses a public image that contains any of the credentials.
+
+`lib/improv/` is the Improv serial library, vendored with one fix: it declares ESP8266 support but
+includes ESP32-only FreeRTOS headers for the single `delay` it needs. See `lib/improv/README.md`.
+
 TFT_eSPI is configured entirely from `build_flags` in `platformio.ini` (`-DUSER_SETUP_LOADED=1`
 plus the driver and pin defines), so no library file is ever edited. There is no framebuffer:
 240×240 at 16 bpp is 115 kB and the ESP8266 has ~40 kB free, so primitives are drawn directly and
@@ -187,6 +204,18 @@ pio run -e ili9341 -t upload
 No glow at all from a powered module (they have no backlight pin — the LED is wired to `VCC`
 internally) means the problem is power, not drivers. More detail in `docs/wiring.md`.
 
+## Web flasher
+
+**<https://tiwiz.github.io/ClaudeReset/flasher/>**
+
+Flash the display from a browser — no toolchain, no build machine. It ships the credential-free
+image, and the WiFi is entered in the dialog and sent over the cable. Needs Chrome, Edge or Opera on
+a desktop: Web Serial does not exist in Safari, Firefox or on phones.
+
+Two things the browser cannot do for you, and are therefore baked into the published file: the
+ESP8266 image header must already carry flash mode/size/frequency (it is `e9 02 02 40` — DIO, 4 MB,
+40 MHz), and the manifest must declare one image at offset 0.
+
 ## Repository layout
 
 | Path | Role |
@@ -196,8 +225,11 @@ internally) means the problem is power, not drivers. More detail in `docs/wiring
 | `systemd/claude-usage.service` | user unit for the legacy poller |
 | `firmware/` | ESP8266 firmware (PlatformIO + TFT_eSPI) |
 | `firmware-test/` | display test patterns, no WiFi, no secrets |
+| `docs/index.html` | landing page for GitHub Pages |
+| `docs/flasher/` | the web flasher page, its manifest and the published image |
 | `docs/wiring.md` | pin map, dial geometry, palette, troubleshooting (Italian) |
 | `docs/wiring-diagram.png` | the wiring sheet |
+| `firmware/lib/improv/` | Improv serial protocol (MIT), vendored with an ESP8266 include fix |
 
 ## Secrets
 
@@ -214,6 +246,7 @@ internally) means the problem is power, not drivers. More detail in `docs/wiring
 - [x] 7-day window, pure white text, verified against the real Claude Code quota
 - [x] service with its own sign-in, token refresh, cache and mDNS advertisement (34 tests)
 - [x] firmware discovers the service over mDNS, verified on hardware (found `192.168.86.42:8790` by itself)
-- [ ] web flasher on GitHub Pages
+- [x] web flasher on GitHub Pages: <https://tiwiz.github.io/ClaudeReset/flasher/>
+- [x] WiFi configured from the browser (Improv) for the published image — no secrets in the binary
 - [ ] secondary arc for the second window
 - [ ] 3D-printed enclosure
