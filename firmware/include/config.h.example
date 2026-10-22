@@ -27,6 +27,11 @@
 // --- nome con cui il display si presenta in rete ---
 #define DEVICE_NAME   "claude-ring"
 
+// --- pulsante per passare fra le due finestre (7 giorni / 5 ore) ---
+// Contatto momentaneo fra D0 (GPIO16) e 3V3: niente resistenze, il pull-down è interno.
+// -1 lo disattiva.
+#define BUTTON_PIN 16
+
 // --- ogni quanto chiedere il dato, in secondi ---
 #define POLL_SECONDS 30
 

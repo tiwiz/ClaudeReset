@@ -73,3 +73,28 @@ Nell'ordine in cui conviene indagare:
    presenta ~10 MΩ, non manda corrente): è la **pressione** che ripristina il contatto. Si rifà il
    giunto sui pad `VCC` e `GND`, che sono gli unici due a portare corrente.
    Se il modulo è su basette a pin, il punto debole è la saldatura basetta↔pad, non il filo.
+
+## Pulsante per cambiare finestra (opzionale)
+
+Un contatto momentaneo fra **D0 (GPIO16)** e **3V3** fa passare il quadrante dalla finestra dei
+7 giorni a quella delle 5 ore e viceversa. Entrambe le finestre arrivano nello stesso JSON, quindi
+il cambio è istantaneo: nessuna richiesta in più.
+
+| Dal | Al | Note |
+|---|---|---|
+| Un pin metallico del pulsante | **D0** (GPIO16) | lato sinistro della scheda |
+| L'altro pin metallico | **3V3** | stesso lato, poche piazzole più sotto |
+| Pin plastico (se è uno switch di tastiera) | — | serve solo a centrare il foro da 14x14 mm |
+
+- **Nessuna resistenza**: GPIO16 è l'unico pin dell'ESP8266 con il **pull-down interno**, quindi a
+  riposo legge basso e premuto legge alto. E se il pulsante non è collegato non succede nulla (un pin
+  flottante cambierebbe vista da solo, e non è il caso).
+- **Mai a 5 V**: il pin è a logica 3,3 V.
+- **D3, D4 e D8 non si usano**: sono pin di strapping, e un pulsante premuto all'avvio impedisce alla
+  scheda di partire (è lo stesso problema che ha reso necessario spostare il `CS` su D6).
+- La scelta della finestra si ricorda in EEPROM, quindi sopravvive al riavvio.
+- Il `3V3` deve alimentare **due** cose (il display e il pulsante): serve un giunto a tre vie — una
+  basetta millefori con una pista, un morsetto a leva, o due fili pre-stagnati sullo stesso pad.
+  Sull'altro lato, il filo del `3V3` del pulsante va tenuto di colore diverso da quello del display.
+- Con un pulsante di tastiera (switch MX) il contatto è momentaneo normalmente aperto: si verifica in
+  due secondi col tester in continuità fra i due pin metallici (aperto a riposo, chiuso premuto).

@@ -170,6 +170,14 @@ plus the driver and pin defines), so no library file is ever edited. There is no
 240×240 at 16 bpp is 115 kB and the ESP8266 has ~40 kB free, so primitives are drawn directly and
 only the delta is repainted.
 
+### Optional button
+
+A momentary contact between **D0 / GPIO16** and **3V3** flips the dial between the 7-day and the
+5-hour window. Both windows already arrive in the same JSON, so the switch costs no request and no
+wait. GPIO16 is the one pin with an internal pull-down: no resistor, and an unwired pin stays quiet
+instead of flipping the view on noise. The choice is kept in EEPROM, so it survives a reboot.
+Full wiring notes (and why not D3/D4/D8) in `docs/wiring.md`.
+
 ### How the display finds the service
 
 No IP address is compiled in. The firmware asks the LAN who offers `_claudereset._tcp`
@@ -248,5 +256,6 @@ ESP8266 image header must already carry flash mode/size/frequency (it is `e9 02 
 - [x] firmware discovers the service over mDNS, verified on hardware (found `192.168.86.42:8790` by itself)
 - [x] web flasher on GitHub Pages: <https://tiwiz.github.io/ClaudeReset/flasher/>
 - [x] WiFi configured from the browser (Improv) for the published image — no secrets in the binary
-- [ ] secondary arc for the second window
+- [x] button on D0 to switch between the 7-day and the 5-hour window (1.1.0)
+- [ ] secondary arc to show both windows at once
 - [ ] 3D-printed enclosure

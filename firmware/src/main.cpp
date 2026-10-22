@@ -67,8 +67,10 @@ TFT_eSPI tft = TFT_eSPI();
 struct Usage {
   bool  ok       = false;   // dato utilizzabile
   bool  stale    = false;   // dato vecchio
-  float pct      = -1;      // finestra 7 giorni
-  long  resetSec = -1;      // secondi al reset della finestra 7 giorni
+  float pct7     = -1;      // finestra 7 giorni
+  long  reset7   = -1;      // secondi al reset della finestra 7 giorni
+  float pct5     = -1;      // finestra 5 ore
+  long  reset5   = -1;
   char  err[48]  = "";
   unsigned long millisAtFetch = 0;
 };
@@ -80,6 +82,14 @@ static int     lastState = -1;       // 0 = online, 1 = offline
 static unsigned long lastPoll = 0, lastCountdown = 0;
 static bool    timeSynced = false;
 
+// ---------------------------------------------------------------- quale finestra
+// Il servizio manda ENTRAMBE le finestre nello stesso JSON: cambiare vista non costa
+// né una richiesta né un'attesa, è solo la scelta di cosa disegnare.
+static uint8_t view = 0;                       // 0 = 7 giorni, 1 = 5 ore
+static float viewPct()         { return view ? usage.pct5 : usage.pct7; }
+static long  viewReset()       { return view ? usage.reset5 : usage.reset7; }
+static const char *viewLabel() { return view ? "5h" : "7g"; }
+
 // ---------------------------------------------------------------- credenziali di rete
 // Il browser le consegna via Improv (protocollo seriale) e qui finiscono in EEPROM,
 // così sopravvivono al riavvio. Se non ce ne sono, si usa config.h quando presente.
@@ -87,6 +97,7 @@ struct StoredCreds {
   uint32_t magic;
   char     ssid[33];
   char     pass[65];
+  uint8_t  view;      // quale finestra stava mostrando (0 = 7 giorni, 1 = 5 ore)
 };
 static const uint32_t CREDS_MAGIC = 0x434C5231;   // "CLR1"
 static StoredCreds creds;
@@ -119,6 +130,7 @@ static void loadCreds() {
     creds.ssid[0] = '\0';
     creds.pass[0] = '\0';
   }
+  if (creds.view > 1) creds.view = 0;   // prima di questa versione non c'era
   if (creds.ssid[0] == '\0' && WIFI_SSID[0] != '\0') {
     strncpy(creds.ssid, WIFI_SSID, sizeof(creds.ssid) - 1);
     strncpy(creds.pass, WIFI_PASS, sizeof(creds.pass) - 1);
@@ -230,7 +242,7 @@ static void fmtResetClock(long sec, char *out, size_t n) {
 
 // quadrante online
 static void drawOnline(bool full) {
-  int pct = (int)lroundf(usage.pct);
+  int pct = (int)lroundf(viewPct());
   if (pct < 0) pct = 0;
   if (pct > 100) pct = 100;
   uint16_t color = (pct > PCT_OVER) ? C_ARC_HI : C_ARC;
@@ -247,15 +259,15 @@ static void drawOnline(bool full) {
   // I testi vengono dopo l'anello: se si disegnassero prima, durante il ridisegno
   // completo si vedrebbe la label "7g" da sola sul fondo, prima del resto.
   char buf[24];
-  textIfChanged("7g", Y_LABEL, &FreeSansBold12pt7b, 1, C_TEXT, shownLabel, sizeof(shownLabel));
+  textIfChanged(viewLabel(), Y_LABEL, &FreeSansBold12pt7b, 1, C_TEXT, shownLabel, sizeof(shownLabel));
   snprintf(buf, sizeof(buf), "%d%%", pct);
   textIfChanged(buf, Y_PCT, &FreeSansBold24pt7b, 1, C_TEXT, shownPct, sizeof(shownPct));
 
-  fmtResetClock(usage.resetSec, buf, sizeof(buf));
+  fmtResetClock(viewReset(), buf, sizeof(buf));
   textIfChanged(buf, Y_RESET, &FreeSansBold9pt7b, 1, C_TEXT, shownReset, sizeof(shownReset));
 
   char cd[16];
-  fmtCountdown(usage.resetSec, cd, sizeof(cd));
+  fmtCountdown(viewReset(), cd, sizeof(cd));
   textIfChanged(cd, Y_CDOWN, &FreeSans9pt7b, 1, C_TEXT, shownCountdown, sizeof(shownCountdown));
 
   lastState = 0;
@@ -269,7 +281,7 @@ static void drawOffline() {
   drawnAngle = 0;
   drawnColor = C_ARC;
   forgetShownText();   // lo schermo è stato azzerato: niente di ciò che era scritto vale più
-  textAt("7g", Y_LABEL, &FreeSansBold12pt7b, 1, C_TEXT, C_BG);
+  textAt(viewLabel(), Y_LABEL, &FreeSansBold12pt7b, 1, C_TEXT, C_BG);
   textAt("--", Y_PCT, &FreeSansBold24pt7b, 1, C_TEXT, C_BG);
   // Il motivo sta sulla riga del reset, tagliato per stare dentro la corda del cerchio
   // a quella altezza. Meglio dire "non autenticato" che ripetere l'ultimo numero.
@@ -278,6 +290,41 @@ static void drawOffline() {
   textAt(reason, Y_RESET, &FreeSans9pt7b, 1, C_TEXT, C_BG);
   // (font 9pt a size 1: le righe di servizio restano piccole per scelta)
   lastState = 1;
+}
+
+// ---------------------------------------------------------------- pulsante
+// Un contatto momentaneo fra D0 (GPIO16) e 3V3: a riposo il pull-down interno lo tiene
+// basso, premuto legge alto. Nessuna resistenza esterna. Il cambio avviene sull'istante
+// della pressione, dopo BUTTON_DEBOUNCE_MS di livello stabile (i contatti rimbalzano).
+static bool buttonStable = false, buttonCandidate = false;
+static unsigned long buttonCandidateAt = 0;
+
+static void toggleView() {
+  view = view ? 0 : 1;
+  creds.view = view;
+  EEPROM.put(0, creds);          // la scelta sopravvive al riavvio
+  EEPROM.commit();
+  Serial.printf("[vista] %s\n", viewLabel());
+  lastState = -1;                // forza il ridisegno completo dell'anello
+  drawnAngle = -1;
+  forgetShownText();
+  if (usage.ok) drawOnline(true);
+  else drawOffline();
+}
+
+static void pollButton() {
+#if BUTTON_PIN >= 0
+  bool now = (digitalRead(BUTTON_PIN) == HIGH);
+  if (now != buttonCandidate) {       // livello cambiato: aspetto che si stabilizzi
+    buttonCandidate = now;
+    buttonCandidateAt = millis();
+    return;
+  }
+  if (buttonCandidate != buttonStable && millis() - buttonCandidateAt >= BUTTON_DEBOUNCE_MS) {
+    buttonStable = buttonCandidate;
+    if (buttonStable) toggleView();
+  }
+#endif
 }
 
 // ---------------------------------------------------------------- rete
@@ -418,12 +465,15 @@ static void pollUsage() {
   float ok = 0, v = -1, r = -1, stale = 0;
   bool hasOk  = jsonNumber(body, "ok", ok);
   bool hasPct = jsonNumber(body, "p7", v);      // finestra 7 giorni
+  float v5 = -1, r5 = -1;
   bool hasSt  = jsonNumber(body, "stale", stale);
 
   usage.stale = hasSt && stale >= 0.5f;
   usage.ok    = hasOk && ok >= 0.5f && hasPct && v >= 0 && !usage.stale;
-  if (hasPct) usage.pct = v;
-  if (jsonNumber(body, "r7", r)) usage.resetSec = (long)r;
+  if (hasPct) usage.pct7 = v;
+  if (jsonNumber(body, "r7", r)) usage.reset7 = (long)r;
+  if (jsonNumber(body, "p", v5)) usage.pct5 = v5;
+  if (jsonNumber(body, "r", r5)) usage.reset5 = (long)r5;
   if (!jsonString(body, "err", usage.err, sizeof(usage.err))) usage.err[0] = '\0';
 
   if (usage.ok) {
@@ -449,6 +499,18 @@ void setup() {
   textAt("connessione...", 140, &FreeSans9pt7b, 1, C_TEXT, C_BG);
 
   loadCreds();
+  view = creds.view;
+#if defined(VIEW_FORCE)
+  // Solo per il banco: forza la vista e la salva (es. -DVIEW_FORCE=0 per tornare a 7g).
+  view = VIEW_FORCE;
+  creds.view = view;
+  EEPROM.put(0, creds);
+  EEPROM.commit();
+#endif
+#if BUTTON_PIN >= 0
+  pinMode(BUTTON_PIN, INPUT_PULLDOWN_16);   // l'unico pin con pull-down interno
+#endif
+  Serial.printf("[vista] %s, pulsante su GPIO%d\n", viewLabel(), (int)BUTTON_PIN);
   improvSerial.setDeviceInfo(ImprovTypes::ChipFamily::CF_ESP8266, "Claude Usage Ring",
                              FIRMWARE_VERSION, DEVICE_NAME);
   improvSerial.onImprovConnected(onImprovConnected);
@@ -479,16 +541,27 @@ void loop() {
   while (Serial.available() > 0) improvSerial.handleSerial();
   MDNS.update();          // il responder mDNS va servito, altrimenti le risposte scadono
 
+  pollButton();
+
+#if defined(VIEW_TOGGLE_TEST)
+  // Prova in banco: cambia vista da sola ogni 10 s. Non entra nell'immagine pubblicata.
+  static unsigned long lastTestToggle = 0;
+  if (now - lastTestToggle >= 10000UL) {
+    lastTestToggle = now;
+    toggleView();
+  }
+#endif
+
   if (now - lastPoll >= (unsigned long)POLL_SECONDS * 1000UL) {
     lastPoll = now;
     pollUsage();
   }
 
   // countdown fra un poll e l'altro, senza rileggere il server
-  if (lastState == 0 && usage.resetSec >= 0 && now - lastCountdown >= 20000UL) {
+  if (lastState == 0 && viewReset() >= 0 && now - lastCountdown >= 20000UL) {
     lastCountdown = now;
     long elapsed = (long)((now - usage.millisAtFetch) / 1000UL);
-    long left = usage.resetSec - elapsed;
+    long left = viewReset() - elapsed;
     if (left < 0) left = 0;
     char cd[16];
     fmtCountdown(left, cd, sizeof(cd));

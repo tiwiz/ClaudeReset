@@ -83,7 +83,11 @@ docker compose up -d --build</code></pre>
       <tr><th>DC</th><td>D2 · GPIO4</td></tr>
       <tr><th>SDA</th><td>D7 · GPIO13 (MOSI)</td></tr>
       <tr><th>SCL</th><td>D5 · GPIO14 (SCK)</td></tr>
+      <tr><th>Button <span class="dim">(optional)</span></th><td>D0 · GPIO16 ↔ 3V3</td></tr>
     </table>
+    <p class="dim small">The optional button flips between the 7-day and the 5-hour window: a
+       momentary contact between <b>D0 / GPIO16</b> and <b>3V3</b>, no resistor needed (that pin has an
+       internal pull-down, so leaving it unwired is safe).</p>
     <p class="dim small">MISO is not connected: these panels are write-only.
        Long version with the panel geometry in
        <a href="https://github.com/tiwiz/ClaudeReset/blob/main/docs/wiring.md" target="_blank"
@@ -103,7 +107,7 @@ docker compose up -d --build</code></pre>
   </section>
 
   <footer>
-    Firmware <b>v1.0.1</b> for ESP8266 · MIT ·
+    Firmware <b>v1.1.0</b> for ESP8266 · MIT ·
     <a href="https://github.com/tiwiz/ClaudeReset" target="_blank" rel="noopener">source</a> ·
     flashing by <a href="https://esphome.github.io/esp-web-tools/" target="_blank" rel="noopener">ESP Web Tools</a>
   </footer>

@@ -34,7 +34,19 @@
 #endif
 
 #ifndef FIRMWARE_VERSION
-#define FIRMWARE_VERSION "1.0.1"
+#define FIRMWARE_VERSION "1.1.0"
+#endif
+
+// --- pulsante che cambia finestra (7 giorni / 5 ore) ---
+// Un contatto momentaneo fra BUTTON_PIN e 3V3. D0/GPIO16 è l'unico pin con pull-down
+// interno: a riposo legge basso, quindi non serve nessuna resistenza e — importante —
+// se il pulsante non è collegato non succede nulla (un pin flottante cambierebbe vista
+// da solo). Metti -1 per disattivarlo del tutto.
+#ifndef BUTTON_PIN
+#define BUTTON_PIN 16
+#endif
+#ifndef BUTTON_DEBOUNCE_MS
+#define BUTTON_DEBOUNCE_MS 50
 #endif
 
 // --- rete ---
