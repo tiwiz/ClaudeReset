@@ -134,6 +134,7 @@ static IPAddress svcIp;
 static uint16_t  svcPort = SERVICE_PORT;
 static bool      svcDiscovered = false;   // l'indirizzo corrente viene dall'annuncio
 static int       failStreak = 0;
+static int       pollsSinceFallback = 0;  // quanti giri sto andando con l'indirizzo di ripiego
 
 // ---------------------------------------------------------------- disegno
 static inline void arcPoint(float deg, float r, int16_t &x, int16_t &y) {
@@ -325,11 +326,25 @@ static bool discoverService(bool loud) {
     svcIp.fromString(FALLBACK_HOST);
     svcPort = SERVICE_PORT;
     if (loud) {
-      Serial.printf("[mdns] nessun annuncio, ripiego su %s:%u\n", FALLBACK_HOST,
+      Serial.printf("[mdns] nessun annuncio, per ora uso %s:%u\n", FALLBACK_HOST,
                     (unsigned)svcPort);
     }
   }
-  return svcIp.isSet();
+  return false;   // false = nessun annuncio trovato, anche se un indirizzo c'è
+}
+
+// La query può cadere nel momento sbagliato (responder non ancora pronto): si riprova
+// qualche volta, dando respiro a MDNS.update() fra un tentativo e l'altro.
+static bool discoverWithRetries(int attempts) {
+  for (int i = 0; i < attempts; i++) {
+    if (discoverService(i == 0)) return true;
+    for (int k = 0; k < 20; k++) {
+      MDNS.update();
+      delay(50);
+    }
+  }
+  Serial.println("[mdns] nessuna risposta agli annunci: vado avanti con l'indirizzo di ripiego");
+  return false;
 }
 
 static void pollUsage() {
@@ -339,7 +354,14 @@ static void pollUsage() {
     drawOffline();
     return;
   }
-  if (!svcIp.isSet() || !svcDiscovered) discoverService(false);
+  if (!svcIp.isSet()) {
+    discoverWithRetries(2);
+  } else if (!svcDiscovered && ++pollsSinceFallback >= 5) {
+    // Sto usando l'indirizzo di ripiego: riprovo ogni 5 giri, così non pago 3 s di
+    // attesa a ogni lettura se in rete l'annuncio proprio non passa.
+    pollsSinceFallback = 0;
+    if (discoverService(false)) pollsSinceFallback = 0;
+  }
 
   WiFiClient client;
   HTTPClient http;
@@ -423,7 +445,7 @@ void setup() {
   timeSynced = getLocalTime(&tmv, 5000);
   Serial.printf("[ntp] orario %s\n", timeSynced ? "sincronizzato" : "non disponibile");
 
-  discoverService(true);
+  discoverWithRetries(3);
   pollUsage();
   lastPoll = lastCountdown = millis();
 }
