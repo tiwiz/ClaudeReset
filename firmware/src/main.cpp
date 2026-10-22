@@ -592,6 +592,20 @@ void loop() {
 
   pollButton();
 
+#if defined(PIN_WATCH)
+  // Banco: quante volte il pin del pulsante cambia livello davvero, senza toccarlo.
+  // Serve a distinguere una pressione da un disturbo raccolto dal filo.
+  static bool wPrev = false; static unsigned long wCambi = 0; static unsigned long wT0 = 0;
+  bool wNow = (digitalRead(BUTTON_PIN) == HIGH);
+  if (wNow != wPrev) { wPrev = wNow; wCambi++; }
+  if (millis() - wT0 >= 5000UL) {
+    wT0 = millis();
+    Serial.printf("[pin] GPIO%d: %lu cambi in 5 s, livello %s\n",
+                  (int)BUTTON_PIN, wCambi, wNow ? "ALTO" : "basso");
+    wCambi = 0;
+  }
+#endif
+
 #if defined(VIEW_TOGGLE_TEST)
   // Prova in banco: cambia vista da sola ogni 10 s. Non entra nell'immagine pubblicata.
   static unsigned long lastTestToggle = 0;
