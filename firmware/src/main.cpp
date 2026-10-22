@@ -3,7 +3,7 @@
  * -------------------------------------------------------------------
  * Legge  http://<host>:<porta>/claude  sulla LAN e disegna:
  *   - anello di traccia + arco di avanzamento (arancione)
- *   - percentuale della finestra a 5 ore al centro
+ *   - percentuale della finestra a 7 giorni al centro
  *   - orario del prossimo reset e countdown sotto
  *
  * Il micro NON ha credenziali: fa solo una GET in chiaro sulla LAN.
@@ -27,7 +27,7 @@
 static const int16_t CX = 120, CY = 120;
 static const int16_t R_RING  = 103;   // mezzeria dell'anello
 static const int16_t RING_W  = 14;    // spessore dell'anello
-static const int16_t Y_LABEL = 62;    // etichetta "5h"
+static const int16_t Y_LABEL = 62;    // etichetta "7g"
 static const int16_t Y_PCT   = 142;   // percentuale
 static const int16_t Y_RESET = 172;   // orario di reset
 static const int16_t Y_CDOWN = 194;   // countdown
@@ -43,9 +43,9 @@ constexpr uint16_t C_BG     = rgb565(0x0e, 0x0e, 0x11);
 constexpr uint16_t C_TRACK  = rgb565(0x2b, 0x2b, 0x33);
 constexpr uint16_t C_ARC    = rgb565(0xd9, 0x77, 0x57);
 constexpr uint16_t C_ARC_HI = rgb565(0xe0, 0x5a, 0x3a);
-constexpr uint16_t C_TEXT   = rgb565(0xf5, 0xf5, 0xf5);
-constexpr uint16_t C_DIM    = rgb565(0x9a, 0x9a, 0xa3);
-constexpr uint16_t C_OFF    = rgb565(0x5b, 0x5b, 0x66);
+constexpr uint16_t C_TEXT   = 0xFFFF;                  // bianco puro: leggibilita' massima
+constexpr uint16_t C_DIM    = 0xFFFF;                  // alias: anche il testo secondario e' bianco
+constexpr uint16_t C_OFF    = rgb565(0x8a, 0x8a, 0x94);  // solo per lo stato offline
 
 TFT_eSPI tft = TFT_eSPI();
 
@@ -53,9 +53,8 @@ TFT_eSPI tft = TFT_eSPI();
 struct Usage {
   bool  ok       = false;   // dato utilizzabile
   bool  stale    = false;   // dato vecchio
-  float pct      = -1;      // finestra 5 ore
-  float pct7     = -1;      // finestra 7 giorni
-  long  resetSec = -1;      // secondi al reset della finestra 5 ore
+  float pct      = -1;      // finestra 7 giorni
+  long  resetSec = -1;      // secondi al reset della finestra 7 giorni
   char  err[48]  = "";
   unsigned long millisAtFetch = 0;
 };
@@ -149,7 +148,7 @@ static void drawOnline(bool full) {
     drawTrack();
     drawnAngle = 0;
     drawnColor = color;
-    textAt("5h", Y_LABEL, &FreeSans9pt7b, 2, C_DIM, C_BG);
+    textAt("7g", Y_LABEL, &FreeSans9pt7b, 2, C_TEXT, C_BG);
     pct = (int)lroundf(usage.pct);
   }
   drawArc(3.6f * (float)pct, color);
@@ -175,9 +174,9 @@ static void drawOffline() {
   drawBand(0, 360, C_OFF);
   drawnAngle = 0;
   drawnColor = C_ARC;
-  textAt("5h", Y_LABEL, &FreeSans9pt7b, 2, C_DIM, C_BG);
-  textAt("--", Y_PCT, &FreeSansBold24pt7b, 1, C_OFF, C_BG);
-  textAt(usage.err[0] ? usage.err : "offline", Y_RESET, &FreeSans9pt7b, 1, C_OFF, C_BG);
+  textAt("7g", Y_LABEL, &FreeSans9pt7b, 2, C_TEXT, C_BG);
+  textAt("--", Y_PCT, &FreeSansBold24pt7b, 1, C_TEXT, C_BG);
+  textAt(usage.err[0] ? usage.err : "offline", Y_RESET, &FreeSans9pt7b, 1, C_TEXT, C_BG);
   lastState = 1;
 }
 
@@ -235,8 +234,8 @@ static void pollUsage() {
   http.end();
   Serial.printf("[poll] %s\n", body.c_str());
 
-  float v, r, p7, r7, age, stale;
-  bool hasPct = jsonNumber(body, "p", v);
+  float v, r, age, stale;
+  bool hasPct = jsonNumber(body, "p7", v);   // finestra 7 giorni
   bool hasOk  = jsonNumber(body, "ok", stale);
   bool hasSt  = jsonNumber(body, "stale", stale);
   (void)hasOk;
@@ -244,10 +243,8 @@ static void pollUsage() {
   usage.ok    = hasPct && v >= 0 && !(hasSt && stale >= 0.5f);
   usage.stale = hasSt && stale >= 0.5f;
   if (hasPct) usage.pct  = v;
-  if (jsonNumber(body, "p7", p7))  usage.pct7 = p7;
-  if (jsonNumber(body, "r",  r))   usage.resetSec = (long)r;
-  if (jsonNumber(body, "age", age)) { }
-  (void)r7;
+  if (jsonNumber(body, "r7", r))   usage.resetSec = (long)r;
+  (void)age;
 
   if (usage.ok) {
     usage.millisAtFetch = millis();
@@ -268,8 +265,8 @@ void setup() {
   tft.setRotation(0);
   tft.fillScreen(C_BG);
   drawTrack();
-  textAt("Claude usage", 108, &FreeSans9pt7b, 2, C_DIM, C_BG);
-  textAt("connessione...", 140, &FreeSans9pt7b, 1, C_OFF, C_BG);
+  textAt("Claude usage", 108, &FreeSans9pt7b, 2, C_TEXT, C_BG);
+  textAt("connessione...", 140, &FreeSans9pt7b, 1, C_TEXT, C_BG);
 
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);

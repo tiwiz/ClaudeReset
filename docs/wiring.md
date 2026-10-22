@@ -35,12 +35,13 @@ Da non sbagliare:
 | Arco di utilizzo | da ore 12 (−90°), senso orario, angolo = 360° × pct, colore `#d97757`, estremità arrotondate |
 | Bordo pannello | r 110 (Ø 220) |
 | Area sicura per il testo | r 84 |
-| Etichetta finestra (`5h`) | 20 px, ancorata al centro, y=62 |
-| Percentuale | 64 px bold, centro (120, 142) |
-| Riga reset (`reset 12:40`) | 22 px, centro (120, 172) |
+| Etichetta finestra (`7g`) | 20 px, ancorata al centro, y=62 |
+| Percentuale della finestra **7 giorni** | 64 px bold, centro (120, 142) |
+| Riga reset 7 giorni (`reset 12:40`) | 22 px, centro (120, 172) |
 | Countdown (`2h 35m`) | 16 px, centro (120, 194) |
 | Oltre l'80% | arco in `#e05a3a` |
 | Offline | anello grigio, `--` al centro |
+| Testo | bianco puro `#ffffff` su tutti i testi, la gerarchia la fa solo la dimensione |
 
 Gli angoli del pannello sono fuori dal cerchio: non ci va nulla.
 
