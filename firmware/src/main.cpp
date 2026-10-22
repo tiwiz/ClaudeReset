@@ -162,7 +162,7 @@ static void drawOnline(bool full) {
   textAt(buf, Y_PCT, &FreeSansBold24pt7b, 1, C_TEXT, C_BG);
 
   fmtResetClock(usage.resetSec, buf, sizeof(buf));
-  textAt(buf, Y_RESET, &FreeSansBold12pt7b, 1, C_TEXT, C_BG);
+  textAt(buf, Y_RESET, &FreeSansBold9pt7b, 1, C_TEXT, C_BG);
 
   char cd[16];
   fmtCountdown(usage.resetSec, cd, sizeof(cd));
@@ -305,7 +305,7 @@ void loop() {
     textAt(cd, Y_CDOWN, &FreeSans9pt7b, 1, C_DIM, C_BG);
     char rz[24];
     fmtResetClock(left, rz, sizeof(rz));
-    textAt(rz, Y_RESET, &FreeSansBold12pt7b, 1, C_TEXT, C_BG);
+    textAt(rz, Y_RESET, &FreeSansBold9pt7b, 1, C_TEXT, C_BG);
   }
 
   delay(200);

@@ -37,7 +37,7 @@ Da non sbagliare:
 | Area sicura per il testo | r 84 |
 | Etichetta finestra (`7g`) | 20 px, ancorata al centro, y=62 |
 | Percentuale della finestra **7 giorni** | FreeSansBold24pt7b, centro (120, 118) |
-| Riga reset 7 giorni (`reset 12:40`) | 22 px, centro (120, 172) |
+| Riga reset 7 giorni (`reset 12:40`) | FreeSansBold9pt7b, centro (120, 172) |
 | Countdown (`2h 35m`) | 16 px, centro (120, 194) |
 | Oltre l'80% | arco in `#e05a3a` |
 | Offline | anello grigio, `--` al centro |
