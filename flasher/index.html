@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Usage Ring — web flasher</title>
+<meta name="description" content="Flash the Claude Usage Ring desk display (ESP8266 D1 mini + round GC9A01) from the browser, no toolchain needed.">
+<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+<style>
+  :root { color-scheme: dark; --bg:#0b1120; --card:rgba(30,41,59,.35); --line:#334155;
+          --text:#e2e8f0; --dim:#94a3b8; --accent:#d97757; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:32px 16px 64px; background:var(--bg); color:var(--text);
+         font:16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width:760px; margin:0 auto; }
+  h1 { font-size:26px; margin:0 0 6px; letter-spacing:-.3px; }
+  h1 span { color:var(--accent); }
+  .lead { color:var(--dim); margin:0 0 26px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px;
+          padding:20px 22px; margin-bottom:18px; }
+  h2 { font-size:12px; text-transform:uppercase; letter-spacing:1.3px; color:#cbd5e1;
+       margin:0 0 14px; font-weight:600; }
+  code, pre { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; }
+  code { background:#0f172a; border:1px solid var(--line); border-radius:6px; padding:1px 6px; font-size:14px; }
+  pre { background:#0f172a; border:1px solid var(--line); border-radius:10px; padding:12px 14px;
+        overflow-x:auto; font-size:13.5px; margin:10px 0 4px; }
+  pre code { background:none; border:none; padding:0; }
+  table { width:100%; border-collapse:collapse; font-size:15px; }
+  th { text-align:left; color:var(--dim); font-weight:500; padding:4px 12px 4px 0; white-space:nowrap; width:38%; }
+  td { padding:4px 0; }
+  .warn { border-color:#7f1d1d; background:rgba(127,29,29,.18); }
+  .warn h2 { color:#fca5a5; }
+  .dim { color:var(--dim); } .small { font-size:14px; }
+  a { color:var(--accent); }
+  esp-web-install-button button, .btn { font:inherit; font-weight:600; padding:11px 18px; border-radius:10px;
+        border:1px solid var(--accent); background:var(--accent); color:#1a0f0a; cursor:pointer; }
+  esp-web-install-button button[slot="activate"] { }
+  img.diagram { width:100%; border-radius:12px; border:1px solid var(--line); margin-top:8px; }
+  footer { color:#64748b; font-size:13px; text-align:center; margin-top:30px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Claude Usage Ring <span>· flasher</span></h1>
+  <p class="lead">Flashes the desk display — ESP8266 D1 mini + round GC9A01 — straight from the browser.
+     No toolchain, no build machine. The WiFi is asked here and sent to the board over the cable:
+     <b>the firmware image contains no credentials</b>.</p>
+
+  <section class="card">
+    <h2>1 · Deploy the service first</h2>
+    <p>The display is deliberately dumb: it reads the numbers from <b>ClaudeReset</b>, the LAN service that
+       signs in to Claude, keeps the tokens and refreshes them. Without it the dial can only ever say
+       <code>non autenticato</code>.</p>
+<pre><code>git clone https://github.com/tiwiz/ClaudeReset.git
+cd ClaudeReset/service
+mkdir -p data &amp;&amp; chown 10001:10001 data
+docker compose up -d --build</code></pre>
+    <p class="dim small">The service announces itself over mDNS as <code>_claudereset._tcp</code>.
+       The display finds it on its own — there is no IP address to type anywhere.</p>
+  </section>
+
+  <section class="card">
+    <h2>2 · Flash the board</h2>
+    <esp-web-install-button manifest="manifest.json">
+      <button slot="activate">Connect &amp; install</button>
+      <span slot="unsupported">This browser cannot flash a board: Web Serial is Chrome, Edge or Opera on a
+        desktop. Safari, Firefox and phones do not have it.</span>
+      <span slot="not-allowed">Web Serial needs this page served over HTTPS (GitHub Pages is).</span>
+    </esp-web-install-button>
+    <p class="dim small" style="margin-top:14px">Plug the board in with a USB <b>data</b> cable, pick the
+       serial port, and after flashing the dialog asks for the WiFi network: choose the one the display
+       should join (2.4 GHz — the ESP8266 has no 5 GHz radio).</p>
+  </section>
+
+  <section class="card">
+    <h2>3 · Wire the panel</h2>
+    <table>
+      <tr><th>Display</th><td>D1 mini</td></tr>
+      <tr><th>VCC</th><td>3V3</td></tr>
+      <tr><th>GND</th><td>GND</td></tr>
+      <tr><th>RST</th><td>D1 · GPIO5</td></tr>
+      <tr><th>CS</th><td><b>D6 · GPIO12</b></td></tr>
+      <tr><th>DC</th><td>D2 · GPIO4</td></tr>
+      <tr><th>SDA</th><td>D7 · GPIO13 (MOSI)</td></tr>
+      <tr><th>SCL</th><td>D5 · GPIO14 (SCK)</td></tr>
+    </table>
+    <p class="dim small">MISO is not connected: these panels are write-only.
+       Long version with the panel geometry in
+       <a href="https://github.com/tiwiz/ClaudeReset/blob/main/docs/wiring.md" target="_blank"
+          rel="noopener">docs/wiring.md</a>.</p>
+    <img class="diagram" src="wiring-diagram.png" alt="Wiring diagram: D1 mini to GC9A01 panel">
+  </section>
+
+  <section class="card warn">
+    <h2>Two things that cost hours</h2>
+    <p class="small" style="margin:0"><b>Never put CS on D8 (GPIO15).</b> It is a strapping pin: with the
+       panel's pull-up holding it high the board does not boot and cannot even be flashed — the error looks
+       like a broken cable (<code>Timed out waiting for packet header</code>). Use <b>D6 / GPIO12</b>.</p>
+    <p class="small" style="margin:10px 0 0"><b>A black screen is usually a solder joint</b>, not the code.
+       <code>VCC</code> and <code>GND</code> are the only pads carrying current: if the panel lights up only
+       while you press a pad with a probe, resolder it. Symptoms and the colour test are covered by
+       <code>firmware-test/</code> in the repository.</p>
+  </section>
+
+  <footer>
+    Firmware <b>v1.0.0</b> for ESP8266 · MIT ·
+    <a href="https://github.com/tiwiz/ClaudeReset" target="_blank" rel="noopener">source</a> ·
+    flashing by <a href="https://esphome.github.io/esp-web-tools/" target="_blank" rel="noopener">ESP Web Tools</a>
+  </footer>
+</main>
+</body>
+</html>

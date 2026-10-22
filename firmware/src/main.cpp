@@ -8,7 +8,9 @@
  *   - percentuale della finestra a 7 giorni al centro
  *   - orario del prossimo reset e countdown sotto
  *
- * Il micro NON ha credenziali: fa solo una GET in chiaro sulla LAN.
+ * Il micro NON ha credenziali di servizio: fa solo una GET in chiaro sulla LAN. Le uniche
+ * credenziali che tocca sono quelle del wifi, che gli arrivano dal browser via Improv
+ * (immagine del flasher) o da config.h (build locale).
  *
  * Geometria e palette sono 1:1 con docs/wiring.md (spazio 240x240).
  * Niente framebuffer: su ESP8266 non ci sta (115 KB di RAM su ~40 KB liberi),
@@ -21,10 +23,19 @@
 #include <ESP8266mDNS.h>
 #include <WiFiClient.h>
 #include <TFT_eSPI.h>
+#include <ImprovWiFiLibrary.h>
+#include <EEPROM.h>
 #include <math.h>
 #include <time.h>
 
-#include "config.h"   // NON committato: vedi include/config.h.example
+// config.h è locale e gitignorato (wifi, e volendo i nomi): se c'è, i suoi valori
+// vincono sui default. L'immagine pubblica del flasher si compila senza
+// (CLAUDE_RING_PUBLIC_BUILD), quindi non contiene nessun segreto: lì la rete arriva
+// dal browser via Improv.
+#if !defined(CLAUDE_RING_PUBLIC_BUILD) && __has_include("config.h")
+#include "config.h"
+#endif
+#include "config_defaults.h"
 
 // ---------------------------------------------------------------- geometria
 static const int16_t CX = 120, CY = 120;
@@ -68,6 +79,52 @@ static uint16_t drawnColor = C_ARC;  // tinta usata per l'arco disegnato
 static int     lastState = -1;       // 0 = online, 1 = offline
 static unsigned long lastPoll = 0, lastCountdown = 0;
 static bool    timeSynced = false;
+
+// ---------------------------------------------------------------- credenziali di rete
+// Il browser le consegna via Improv (protocollo seriale) e qui finiscono in EEPROM,
+// così sopravvivono al riavvio. Se non ce ne sono, si usa config.h quando presente.
+struct StoredCreds {
+  uint32_t magic;
+  char     ssid[33];
+  char     pass[65];
+};
+static const uint32_t CREDS_MAGIC = 0x434C5231;   // "CLR1"
+static StoredCreds creds;
+static ImprovWiFi  improvSerial(&Serial);
+
+static void saveCreds(const char *ssid, const char *password) {
+  creds.magic = CREDS_MAGIC;
+  strncpy(creds.ssid, ssid, sizeof(creds.ssid) - 1);
+  creds.ssid[sizeof(creds.ssid) - 1] = '\0';
+  strncpy(creds.pass, password, sizeof(creds.pass) - 1);
+  creds.pass[sizeof(creds.pass) - 1] = '\0';
+  EEPROM.put(0, creds);
+  EEPROM.commit();
+  Serial.println("[improv] credenziali salvate in EEPROM");
+}
+
+static void onImprovConnected(const char *ssid, const char *password) {
+  saveCreds(ssid, password);
+}
+
+static void onImprovError(ImprovTypes::Error err) {
+  Serial.printf("[improv] errore %d\n", (int)err);
+}
+
+static void loadCreds() {
+  EEPROM.begin(sizeof(StoredCreds));
+  EEPROM.get(0, creds);
+  if (creds.magic != CREDS_MAGIC) {
+    creds.magic = 0;
+    creds.ssid[0] = '\0';
+    creds.pass[0] = '\0';
+  }
+  if (creds.ssid[0] == '\0' && WIFI_SSID[0] != '\0') {
+    strncpy(creds.ssid, WIFI_SSID, sizeof(creds.ssid) - 1);
+    strncpy(creds.pass, WIFI_PASS, sizeof(creds.pass) - 1);
+    Serial.println("[wifi] uso le credenziali di config.h");
+  }
+}
 
 // ---------------------------------------------------------------- servizio via mDNS
 // Il servizio si annuncia come _claudereset._tcp: l'annuncio porta con sé indirizzo e
@@ -227,9 +284,13 @@ static bool jsonString(const String &body, const char *key, char *out, size_t n)
 
 static bool wifiUp() {
   if (WiFi.status() == WL_CONNECTED) return true;
-  Serial.printf("[wifi] riconnessione a %s\n", WIFI_SSID);
+  if (creds.ssid[0] == '\0') {
+    Serial.println("[wifi] nessuna rete configurata: passare dal flasher (Improv)");
+    return false;
+  }
+  Serial.printf("[wifi] riconnessione a %s\n", creds.ssid);
   WiFi.disconnect();
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  WiFi.begin(creds.ssid, creds.pass);
   for (int i = 0; i < 40 && WiFi.status() != WL_CONNECTED; i++) delay(250);
   if (WiFi.status() == WL_CONNECTED) {
     Serial.printf("[wifi] ok, ip %s\n", WiFi.localIP().toString().c_str());
@@ -274,7 +335,7 @@ static bool discoverService(bool loud) {
 static void pollUsage() {
   if (!wifiUp()) {
     usage.ok = false; usage.stale = true;
-    snprintf(usage.err, sizeof(usage.err), "wifi assente");
+    snprintf(usage.err, sizeof(usage.err), creds.ssid[0] ? "wifi assente" : "configura il wifi");
     drawOffline();
     return;
   }
@@ -344,6 +405,12 @@ void setup() {
   textAt("Claude usage", 108, &FreeSansBold12pt7b, 1, C_TEXT, C_BG);
   textAt("connessione...", 140, &FreeSans9pt7b, 1, C_TEXT, C_BG);
 
+  loadCreds();
+  improvSerial.setDeviceInfo(ImprovTypes::ChipFamily::CF_ESP8266, "Claude Usage Ring",
+                             FIRMWARE_VERSION, DEVICE_NAME);
+  improvSerial.onImprovConnected(onImprovConnected);
+  improvSerial.onImprovError(onImprovError);
+
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
   wifiUp();
@@ -363,6 +430,9 @@ void setup() {
 
 void loop() {
   unsigned long now = millis();
+  // Improv: se il browser sta consegnando le credenziali, va risposto in fretta,
+  // per questo il ciclo gira a 25 ms invece che a 200.
+  improvSerial.handleSerial();
   MDNS.update();          // il responder mDNS va servito, altrimenti le risposte scadono
 
   if (now - lastPoll >= (unsigned long)POLL_SECONDS * 1000UL) {
@@ -384,5 +454,5 @@ void loop() {
     textAt(rz, Y_RESET, &FreeSansBold9pt7b, 1, C_TEXT, C_BG);
   }
 
-  delay(200);
+  delay(25);
 }

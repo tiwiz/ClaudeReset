@@ -1,0 +1,10 @@
+{
+  "name": "improv",
+  "version": "0.0.4",
+  "description": "Improv Wi-Fi serial protocol, vendored from jnthas/Improv-WiFi-Library (MIT) with the ESP8266 include fixed. See README.md.",
+  "keywords": "wifi,improv,serial",
+  "license": "MIT",
+  "frameworks": "arduino",
+  "platforms": ["espressif8266", "espressif32"],
+  "build": { "srcDir": "src" }
+}
