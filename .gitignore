@@ -17,3 +17,8 @@ firmware/*.bin
 # build di PlatformIO (qualunque progetto della repo)
 .pio/
 **/.pio/
+
+# generato da `pio run --target compiledb`
+compile_commands.json
+firmware/compile_commands.json
+firmware-test/compile_commands.json
