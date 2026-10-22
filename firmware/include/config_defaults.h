@@ -34,7 +34,7 @@
 #endif
 
 #ifndef FIRMWARE_VERSION
-#define FIRMWARE_VERSION "1.1.0"
+#define FIRMWARE_VERSION "1.1.1"
 #endif
 
 // --- pulsante che cambia finestra (7 giorni / 5 ore) ---

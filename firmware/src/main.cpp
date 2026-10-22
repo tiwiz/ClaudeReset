@@ -328,21 +328,31 @@ static void pollButton() {
 }
 
 // ---------------------------------------------------------------- rete
+// Il JSON del servizio arriva da json.dumps, che mette SEMPRE uno spazio dopo i due punti
+// ("r": null, "err": ""): dopo i due punti gli spazi vanno saltati, altrimenti il controllo
+// di "null" non scatta e toFloat() legge 0 — e un reset a 0 è "l'ora corrente".
+static int skipSpaces(const String &body, int j) {
+  while (j < (int)body.length() && (body[j] == ' ' || body[j] == '\t')) j++;
+  return j;
+}
+
 static bool jsonNumber(const String &body, const char *key, float &out) {
   String pat = String('"') + key + "\":";
   int i = body.indexOf(pat);
   if (i < 0) return false;
-  int j = i + pat.length();
+  int j = skipSpaces(body, i + pat.length());
   if (body.startsWith("null", j)) return false;
   out = body.substring(j).toFloat();
   return true;
 }
 
 static bool jsonString(const String &body, const char *key, char *out, size_t n) {
-  String pat = String('"') + key + "\":\"";
+  String pat = String('"') + key + "\":";
   int i = body.indexOf(pat);
   if (i < 0) return false;
-  int j = i + pat.length();
+  int j = skipSpaces(body, i + pat.length());
+  if (j >= (int)body.length() || body[j] != '"') return false;
+  j++;
   int k = body.indexOf('"', j);
   if (k < 0) return false;
   String s = body.substring(j, k);
@@ -436,6 +446,11 @@ static void pollUsage() {
   char url[96];
   snprintf(url, sizeof(url), "http://%s:%u%s", svcIp.toString().c_str(),
            (unsigned)svcPort, SERVICE_PATH);
+#if defined(TEST_USAGE_URL)
+  // Banco: leggi da un payload finto invece che dal servizio vero, per vedere cosa fa il
+  // quadrante con dati che in natura non capitano (arco alto, finestra vuota, errore).
+  snprintf(url, sizeof(url), "%s", TEST_USAGE_URL);
+#endif
   http.setTimeout(4000);
   http.setReuse(false);
   if (!http.begin(client, url)) {
@@ -470,11 +485,17 @@ static void pollUsage() {
 
   usage.stale = hasSt && stale >= 0.5f;
   usage.ok    = hasOk && ok >= 0.5f && hasPct && v >= 0 && !usage.stale;
-  if (hasPct) usage.pct7 = v;
-  if (jsonNumber(body, "r7", r)) usage.reset7 = (long)r;
-  if (jsonNumber(body, "p", v5)) usage.pct5 = v5;
-  if (jsonNumber(body, "r", r5)) usage.reset5 = (long)r5;
+  // Un campo assente o nullo vale "non lo so" (-1), NON "tieni il valore di prima":
+  // l'orario di reset si ricalcola da adesso a ogni ridisegno, quindi un valore vecchio
+  // fa slittare la riga "reset" insieme all'orologio (visto: la finestra 5 ore inattiva
+  // mostrava come reset l'ora corrente, e si spostava da sola).
+  usage.pct7   = hasPct ? v : -1;
+  usage.reset7 = jsonNumber(body, "r7", r)  ? (long)r  : -1;
+  usage.pct5   = jsonNumber(body, "p",  v5) ? v5       : -1;
+  usage.reset5 = jsonNumber(body, "r",  r5) ? (long)r5 : -1;
   if (!jsonString(body, "err", usage.err, sizeof(usage.err))) usage.err[0] = '\0';
+  Serial.printf("[dato] 7g p=%.1f r=%ld | 5h p=%.1f r=%ld | err=\"%s\"\n",
+                usage.pct7, usage.reset7, usage.pct5, usage.reset5, usage.err);
 
   if (usage.ok) {
     usage.millisAtFetch = millis();
