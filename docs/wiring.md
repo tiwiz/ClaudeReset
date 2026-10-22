@@ -8,7 +8,7 @@ retroilluminazione. Il `CS` del modulo va a massa, non su una porta: vedi la not
 | # | Pad modulo | Pin D1 mini | GPIO | Funzione | Filo |
 |---|---|---|---|---|---|
 | 1 | RST | D1 | GPIO5 | reset del pannello | rosa |
-| 2 | CS | **GND** | — | chip select, fisso a massa (bus con un solo dispositivo) | viola |
+| 2 | CS | D6 | GPIO12 | chip select | viola |
 | 3 | DC | D2 | GPIO4 | data/command | giallo |
 | 4 | SDA | D7 | GPIO13 | MOSI (hardware SPI) | verde |
 | 5 | SCL | D5 | GPIO14 | clock SPI (hardware SCK) | ciano |
@@ -21,8 +21,8 @@ Da non sbagliare:
 - `GND` in comune obbligatorio.
 - **D3 (GPIO0), D4 (GPIO2) e D8 (GPIO15)** sono pin di strapping: all'avvio devono stare al livello
   giusto, altrimenti l'ESP8266 non parte e non si fa nemmeno flashare. Per questo il `CS` del display
-  **non sta su D8**: va a **GND** (il bus ha un solo dispositivo) e nel firmware si mette `TFT_CS=-1`.
-  Alternativa se si vuole CS pilotato: `D6` (GPIO12), mai GPIO15.
+  sta su **D6 (GPIO12)**, mai su D8: il pull-up sul CS del modulo teneva GPIO15 alto e la scheda non
+  partiva. (Variante equivalente: `CS` a GND con `TFT_CS=-1`.)
 - Se il modulo avesse un ottavo pin di retroilluminazione (`BLK`/`LED`), va a 3V3.
 - L'ordine dei pad sul foglio **non** è l'ordine sulla scheda: conta il nome serigrafato.
 - Lasciare 8-10 cm di filo per ogni collegamento, per richiudere in custodia.
