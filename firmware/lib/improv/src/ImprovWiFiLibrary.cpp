@@ -291,7 +291,12 @@ bool ImprovWiFi::parseImprovSerial(size_t position, uint8_t byte, const uint8_t 
     {
       _position = 0;
       auto command = parseImprovData(&buffer[9], data_len, false);
-      return onCommandCallback(command);
+      // [patch locale] Il frame e' completo: il comando viene consegnato e si riparte
+      // puliti. Restituire l'esito farebbe accodare a handleSerial() il byte di checksum,
+      // e la 'I' del frame successivo finirebbe scartata (un frame perso ogni comando).
+      // Vedi README.md in questa cartella.
+      onCommandCallback(command);
+      return false;
     }
   }
 

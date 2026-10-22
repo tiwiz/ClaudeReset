@@ -430,9 +430,10 @@ void setup() {
 
 void loop() {
   unsigned long now = millis();
-  // Improv: se il browser sta consegnando le credenziali, va risposto in fretta,
-  // per questo il ciclo gira a 25 ms invece che a 200.
-  improvSerial.handleSerial();
+  // Improv: il browser ha un tempo massimo di attesa, e la libreria legge UN byte per
+  // chiamata: una sola chiamata per giro di loop consumava un comando in secondi (il
+  // colloquio andava in timeout). Quindi si svuota tutto ciò che è arrivato sulla seriale.
+  while (Serial.available() > 0) improvSerial.handleSerial();
   MDNS.update();          // il responder mDNS va servito, altrimenti le risposte scadono
 
   if (now - lastPoll >= (unsigned long)POLL_SECONDS * 1000UL) {
