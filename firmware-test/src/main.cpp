@@ -49,9 +49,10 @@ static void drawRingTest() {
   tft.setTextDatum(MC_DATUM);
   tft.setTextColor(C_TEXT, C_BG);
   tft.setFreeFont(&FreeSansBold24pt7b);
-  tft.drawString("60%", CX, 100, 0);
+  // font 1, non 0: con 0 TFT_eSPI non disegna nulla con i FreeFont
+  tft.drawString("60%", CX, 100, 1);
   tft.setFreeFont(&FreeSans9pt7b);
-  tft.drawString("TEST", CX, 168, 0);
+  tft.drawString("TEST", CX, 168, 1);
 }
 
 void setup() {
@@ -97,9 +98,9 @@ void loop() {
     tft.setTextDatum(MC_DATUM);
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
     tft.setFreeFont(&FreeSansBold24pt7b);
-    tft.drawString("TEST", CX, 100, 0);
+    tft.drawString("TEST", CX, 100, 1);
     tft.setFreeFont(&FreeSans9pt7b);
-    tft.drawString("1234", CX, 150, 0);
+    tft.drawString("1234", CX, 150, 1);
     delay(2500);
   }
   tft.setRotation(0);

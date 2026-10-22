@@ -119,7 +119,11 @@ static void textAt(const char *s, int16_t y, const GFXfont *font, uint8_t size,
   tft.setTextSize(size);
   tft.setTextDatum(MC_DATUM);
   tft.setTextColor(color, bg);
-  tft.drawString(s, CX, y, 0);
+  // ATTENZIONE: il numero di font DEVE essere 1. In TFT_eSPI il ramo "free font" e'
+  //   bool freeFont = (font == 1 && gfxFont);
+  // quindi con 0 la libreria legge la tabella dei font bitmap all'indice 0 (vuota) e non
+  // disegna NULLA, senza errori di compilazione. Con 1 usa il GFXfont di setFreeFont().
+  tft.drawString(s, CX, y, 1);
 }
 
 static void fmtCountdown(long sec, char *out, size_t n) {
@@ -148,7 +152,7 @@ static void drawOnline(bool full) {
     drawTrack();
     drawnAngle = 0;
     drawnColor = color;
-    textAt("7g", Y_LABEL, &FreeSans9pt7b, 2, C_TEXT, C_BG);
+    textAt("7g", Y_LABEL, &FreeSansBold12pt7b, 1, C_TEXT, C_BG);
     pct = (int)lroundf(usage.pct);
   }
   drawArc(3.6f * (float)pct, color);
@@ -158,7 +162,7 @@ static void drawOnline(bool full) {
   textAt(buf, Y_PCT, &FreeSansBold24pt7b, 1, C_TEXT, C_BG);
 
   fmtResetClock(usage.resetSec, buf, sizeof(buf));
-  textAt(buf, Y_RESET, &FreeSans9pt7b, 2, C_TEXT, C_BG);
+  textAt(buf, Y_RESET, &FreeSansBold12pt7b, 1, C_TEXT, C_BG);
 
   char cd[16];
   fmtCountdown(usage.resetSec, cd, sizeof(cd));
@@ -174,9 +178,10 @@ static void drawOffline() {
   drawBand(0, 360, C_OFF);
   drawnAngle = 0;
   drawnColor = C_ARC;
-  textAt("7g", Y_LABEL, &FreeSans9pt7b, 2, C_TEXT, C_BG);
+  textAt("7g", Y_LABEL, &FreeSansBold12pt7b, 1, C_TEXT, C_BG);
   textAt("--", Y_PCT, &FreeSansBold24pt7b, 1, C_TEXT, C_BG);
   textAt(usage.err[0] ? usage.err : "offline", Y_RESET, &FreeSans9pt7b, 1, C_TEXT, C_BG);
+  // (font 9pt a size 1: le righe di servizio restano piccole per scelta)
   lastState = 1;
 }
 
@@ -265,7 +270,7 @@ void setup() {
   tft.setRotation(0);
   tft.fillScreen(C_BG);
   drawTrack();
-  textAt("Claude usage", 108, &FreeSans9pt7b, 2, C_TEXT, C_BG);
+  textAt("Claude usage", 108, &FreeSansBold12pt7b, 1, C_TEXT, C_BG);
   textAt("connessione...", 140, &FreeSans9pt7b, 1, C_TEXT, C_BG);
 
   WiFi.mode(WIFI_STA);
@@ -300,7 +305,7 @@ void loop() {
     textAt(cd, Y_CDOWN, &FreeSans9pt7b, 1, C_DIM, C_BG);
     char rz[24];
     fmtResetClock(left, rz, sizeof(rz));
-    textAt(rz, Y_RESET, &FreeSans9pt7b, 2, C_TEXT, C_BG);
+    textAt(rz, Y_RESET, &FreeSansBold12pt7b, 1, C_TEXT, C_BG);
   }
 
   delay(200);
