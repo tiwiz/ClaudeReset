@@ -14,6 +14,10 @@ import time
 from typing import Any
 
 
+class StoreError(RuntimeError):
+    """The volume is there but we cannot use it. Worth saying out loud, not hiding."""
+
+
 class TokenStore:
     def __init__(self, path: pathlib.Path | str):
         self.path = pathlib.Path(path)
@@ -25,6 +29,12 @@ class TokenStore:
                 return json.loads(self.path.read_text(encoding="utf-8"))
             except (FileNotFoundError, json.JSONDecodeError):
                 return {}
+            except OSError as exc:
+                raise StoreError(
+                    f"impossibile leggere {self.path}: {exc.strerror or exc}. "
+                    "Se il servizio gira in Docker, la cartella dati deve appartenere "
+                    "all'utente del container: chown 10001:10001 data"
+                ) from exc
 
     def save(self, data: dict[str, Any]) -> None:
         with self._lock:

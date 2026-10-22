@@ -10,24 +10,41 @@ percentage in the middle, the reset time and a live countdown underneath. It ref
 
 ## Why it is split in two parts
 
-The OAuth token for Claude Code must never leave the machine that owns it, and a microcontroller
-sitting on your desk is easy to pick up and read. So the token stays where it already is:
+The OAuth token must never live on a microcontroller: a desk object is easy to pick up, its flash is
+easy to read, and that token spends your quota. So the secret stays on a machine that can keep it,
+and the display only ever sees a number.
 
 ```
-┌──────────────────────────┐      ┌────────────────────────┐      ┌───────────────────┐
-│  Claude Code             │      │  poller (this repo)    │      │  D1 mini + GC9A01 │
-│  ~/.claude/…credentials  │─────▶│  GET api.anthropic.com │─────▶│  GET /claude      │
-│  OAuth token, never sent │      │  /api/oauth/usage      │      │  draws every 30 s │
-└──────────────────────────┘      │  compact JSON on LAN   │      └───────────────────┘
-                                  └────────────────────────┘
+┌────────────────────────────────────┐        ┌───────────────────────┐
+│  ClaudeReset service (Docker)      │        │  D1 mini + GC9A01     │
+│  own Claude sign-in, PKCE          │        │  finds it over mDNS   │
+│  refreshes the tokens for you      │───────▶│  GET /api/usage       │
+│  polls Anthropic every 5 min       │  LAN   │  draws every 60 s     │
+│  caches and serves the numbers     │        │  no secrets on board  │
+└────────────────────────────────────┘        └───────────────────────┘
 ```
 
-- **The poller** is a small Python script (standard library only) running on any always-on Linux box.
-  It reads the token from Claude Code's own credentials file, calls the usage endpoint, and serves a
-  compact JSON document on a LAN port. It is a systemd *user* unit, so it survives reboots with
-  `loginctl enable-linger <user>`.
-- **The firmware** is a dumb client: it does a plain HTTP GET on the LAN and draws the numbers. No
-  secrets on the device, nothing to leak.
+- **The service** signs in to Claude on its own (no CLI, no credentials file of yours), keeps the
+  tokens in a 600 file inside a Docker volume, refreshes them before they expire, tells you when the
+  refresh token itself will expire, and serves a compact JSON on the LAN. It also announces itself
+  over mDNS, so nobody has to write an IP address into the firmware.
+- **The firmware** is a dumb client: a plain HTTP GET on the LAN, then it draws. No secrets on the
+  device, nothing to leak.
+
+> `poller/` + `systemd/` are the older single-host variant: it reads the credentials file of a Claude
+> Code install on the same machine and *does not refresh anything* — it depends on the CLI being used.
+> Fine if that is your setup, superseded by the service for everybody else.
+
+### Quick start
+
+```bash
+git clone https://github.com/tiwiz/ClaudeReset.git && cd ClaudeReset/service
+mkdir -p data && chown 10001:10001 data
+docker compose up -d --build
+# open the dashboard from the LAN address you will keep using, then sign in
+```
+
+Full details, endpoints, polling policy and security notes: [service/README.md](service/README.md).
 
 ## Display layout
 
@@ -153,8 +170,9 @@ internally) means the problem is power, not drivers. More detail in `docs/wiring
 
 | Path | Role |
 |---|---|
-| `poller/claude_usage.py` | reads the token, calls the usage endpoint, serves JSON |
-| `systemd/claude-usage.service` | user unit for the poller |
+| `service/` | the LAN service: own Claude sign-in, token refresh, cache, mDNS (Docker) |
+| `poller/claude_usage.py` | legacy single-host variant: reads Claude Code's token file, serves JSON |
+| `systemd/claude-usage.service` | user unit for the legacy poller |
 | `firmware/` | ESP8266 firmware (PlatformIO + TFT_eSPI) |
 | `firmware-test/` | display test patterns, no WiFi, no secrets |
 | `docs/wiring.md` | pin map, dial geometry, palette, troubleshooting (Italian) |
@@ -170,8 +188,10 @@ internally) means the problem is power, not drivers. More detail in `docs/wiring
 
 ## Status
 
-- [x] poller + systemd user unit, verified on the build machine
 - [x] firmware on real hardware: panel, wifi, NTP, live values every 30 s
 - [x] 7-day window, pure white text, verified against the real Claude Code quota
+- [x] service with its own sign-in, token refresh, cache and mDNS advertisement (26 tests)
+- [ ] firmware discovers the service over mDNS instead of a fixed IP
+- [ ] web flasher on GitHub Pages
 - [ ] secondary arc for the second window
 - [ ] 3D-printed enclosure

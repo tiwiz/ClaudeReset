@@ -19,6 +19,25 @@ def test_missing_file_is_not_an_error(tmp_path):
     assert TokenStore(tmp_path / "nope.json").load() == {}
 
 
+def test_unreadable_file_says_what_to_do(tmp_path):
+    """The classic Docker mistake: /data owned by root while the container runs as uid 10001."""
+    import os
+
+    import pytest
+
+    from app.store import StoreError
+
+    path = tmp_path / "tokens.json"
+    path.write_text("{}")
+    os.chmod(tmp_path, 0o000)
+    try:
+        with pytest.raises(StoreError) as err:
+            TokenStore(path).load()
+        assert "chown 10001:10001" in str(err.value)
+    finally:
+        os.chmod(tmp_path, 0o700)
+
+
 def test_token_response_keeps_refresh_token_when_the_api_omits_it(tmp_path):
     store = TokenStore(tmp_path / "tokens.json")
     first = store.save_token_response(

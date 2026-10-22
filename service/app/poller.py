@@ -91,7 +91,11 @@ class UsagePoller:
     # -- state -----------------------------------------------------------
     def tokens(self) -> dict[str, Any]:
         with self._lock:
-            return self.store.load()
+            try:
+                return self.store.load()
+            except Exception as exc:  # noqa: BLE001 - a broken volume must not take the API down
+                self.error = str(exc)[:200]
+                return {}
 
     def logged_in(self) -> bool:
         tok = self.tokens()
@@ -121,6 +125,9 @@ class UsagePoller:
             reset = data.get("r")
             reset7 = data.get("r7")
             now = self.clock()
+            reason = self.error
+            if not reason and not self.logged_in():
+                reason = "non autenticato"
             return {
                 "v": 1,
                 "ok": 1 if ok else 0,
@@ -130,7 +137,7 @@ class UsagePoller:
                 "r7": int(reset7 - now) if reset7 else None,
                 "age": int(age) if age is not None else None,
                 "stale": 1 if stale else 0,
-                "err": self.error[:120],
+                "err": reason[:120],
             }
 
     def status(self) -> dict[str, Any]:
