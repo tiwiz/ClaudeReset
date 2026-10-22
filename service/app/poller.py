@@ -149,7 +149,6 @@ class UsagePoller:
                 "logged_in": self.logged_in(),
                 "account": tok.get("account") or {},
                 "organization": tok.get("organization") or {},
-                "subscription": tok.get("subscription"),
                 "scope": tok.get("scope"),
                 "access_expires_at": tok.get("access_expires_at"),
                 "refresh_expires_at": tok.get("refresh_expires_at"),

@@ -150,7 +150,6 @@ def render_page(status: dict[str, Any], *, host: str, mdns_name: str | None) -> 
   <h2>Accesso</h2>
   <table>
     <tr><th>Account</th><td>{html.escape(account.get("email") or "—")}</td></tr>
-    <tr><th>Abbonamento</th><td>{html.escape(str(status.get("subscription") or "—"))}</td></tr>
     <tr><th>Token di accesso</th><td>{_fmt_time(status.get("access_expires_at"))}
         <span class="dim">({_fmt_in(status.get("access_expires_at"), now)})</span></td></tr>
     <tr><th>Token di refresh</th><td>{refresh_line}</td></tr>

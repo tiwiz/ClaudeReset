@@ -78,8 +78,6 @@ class TokenStore:
                 "uuid": organization.get("uuid")
                 or previous.get("organization", {}).get("uuid")
             },
-            "subscription": resp.get("subscription_type")
-            or previous.get("subscription"),
             "access_expires_at": (
                 now + int(expires_in) if expires_in else previous.get("access_expires_at")
             ),
