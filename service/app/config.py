@@ -43,9 +43,14 @@ TOKEN_URL = os.environ.get("TOKEN_URL", "https://platform.claude.com/v1/oauth/to
 MANUAL_REDIRECT_URI = os.environ.get(
     "MANUAL_REDIRECT_URI", "https://platform.claude.com/oauth/code/callback"
 )
-# Read-only-ish by default: widen SCOPES if the usage endpoint answers 403.
-SCOPES = os.environ.get(
-    "SCOPES", "user:profile user:sessions:claude_code user:inference"
+# Narrow by default: we read quota, we do not need to be able to create API keys.
+SCOPES = os.environ.get("SCOPES", "user:profile user:sessions:claude_code user:inference")
+# What the official CLI asks for, kept as an escape hatch: the dashboard offers it in one click if
+# the usage endpoint refuses the narrow set with a 403.
+SCOPES_FULL = os.environ.get(
+    "SCOPES_FULL",
+    "org:create_api_key user:profile user:inference user:sessions:claude_code "
+    "user:mcp_servers user:file_upload user:plugins",
 )
 USAGE_URL = os.environ.get("USAGE_URL", "https://api.anthropic.com/api/oauth/usage")
 

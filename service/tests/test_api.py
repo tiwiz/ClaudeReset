@@ -28,9 +28,13 @@ class FakePoller:
 
 
 class FakeClient:
-    def start_login(self, redirect_uri):
+    def __init__(self):
+        self.logins = []
+
+    def start_login(self, redirect_uri, scopes=None):
         from app.claude import PendingLogin
 
+        self.logins.append({"redirect_uri": redirect_uri, "scopes": scopes})
         return "https://claude.com/cai/oauth/authorize?x=1", PendingLogin(
             verifier="v", state="s", redirect_uri=redirect_uri
         )
@@ -45,11 +49,12 @@ STATUS = {"version": 1, "logged_in": True, "poll_seconds": 300, "usage": {"p7": 
 
 @pytest.fixture()
 def server():
-    app = App(FakePoller(SNAPSHOT, STATUS), FakeClient(), mdns_name="claudereset.local")
+    client = FakeClient()
+    app = App(FakePoller(SNAPSHOT, STATUS), client, mdns_name="claudereset.local")
     httpd = serve(app, "127.0.0.1", 0)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
-    yield httpd.server_address[1], app
+    yield httpd.server_address[1], app, client
     httpd.shutdown()
     httpd.server_close()
 
@@ -64,7 +69,7 @@ def get(port, path):
 
 
 def test_usage_contract(server):
-    port, _ = server
+    port, _, _ = server
     status, body = get(port, "/api/usage")
     import json
 
@@ -75,12 +80,12 @@ def test_usage_contract(server):
 
 
 def test_health_follows_the_reading(server):
-    port, _ = server
+    port, _, _ = server
     assert get(port, "/health")[0] == 200
 
 
 def test_dashboard_renders_and_never_shows_a_token(server):
-    port, _ = server
+    port, _, _ = server
     status, body = get(port, "/")
     assert status == 200
     assert "Claude" in body
@@ -88,14 +93,35 @@ def test_dashboard_renders_and_never_shows_a_token(server):
 
 
 def test_unknown_route_is_404(server):
-    port, _ = server
+    port, _, _ = server
     assert get(port, "/nope")[0] == 404
 
 
 def test_login_redirects_to_claude(server):
-    port, _ = server
+    port, _, _ = server
     status, _ = get(port, "/login")
     assert status == 302
+
+
+def test_default_login_uses_the_code_flow(server):
+    """The LAN address cannot be a redirect: Claude only accepts localhost or the code page."""
+    port, _, client = server
+    get(port, "/login")
+    assert client.logins[-1]["redirect_uri"] == "https://platform.claude.com/oauth/code/callback"
+
+
+def test_loopback_login_never_uses_a_lan_address(server):
+    port, _, client = server
+    get(port, "/login?mode=loopback")
+    assert client.logins[-1]["redirect_uri"] == "http://localhost:8790/callback"
+
+
+def test_narrow_scopes_by_default_and_full_on_request(server):
+    port, _, client = server
+    get(port, "/login")
+    assert "org:create_api_key" not in (client.logins[-1]["scopes"] or "user:profile")
+    get(port, "/login?scope=full")
+    assert "org:create_api_key" in client.logins[-1]["scopes"]
 
 
 def test_is_lan_knows_private_ranges():

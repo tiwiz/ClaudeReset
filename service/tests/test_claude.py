@@ -39,6 +39,22 @@ def test_authorize_url_has_the_pkce_parameters():
     assert "code_challenge" in query
 
 
+def test_manual_redirect_is_the_one_claude_accepts():
+    """console.anthropic.com/oauth/code/callback is the old one and gets rejected."""
+    from app import config
+
+    assert config.MANUAL_REDIRECT_URI == "https://platform.claude.com/oauth/code/callback"
+    assert "console.anthropic.com" not in config.MANUAL_REDIRECT_URI
+
+
+def test_authorize_url_carries_code_true_and_the_scope():
+    client, _ = make_client([])
+    url, _ = client.start_login("http://localhost:8790/callback")
+    query = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)
+    assert query["code"] == ["true"]
+    assert "user:profile" in query["scope"][0]
+
+
 def test_pkce_pair_is_urlsafe_and_s256():
     verifier, challenge = pkce_pair()
     assert 43 <= len(verifier) <= 128

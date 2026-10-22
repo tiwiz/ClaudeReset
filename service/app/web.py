@@ -97,28 +97,51 @@ def render_page(status: dict[str, Any], *, host: str, mdns_name: str | None) -> 
     else:
         refresh_line = '<span class="dim">non comunicata dall\'API (si scopre al primo refresh)</span>'
 
+    scope_hint = ""
+    if "403" in str(status.get("error") or ""):
+        scope_hint = """  <p class="warn small">L'endpoint delle quote ha risposto 403: sono gli scope richiesti a
+     essere troppo stretti, non l'accesso a essere sbagliato. Riprova concedendo quelli completi
+     (gli stessi che chiede il CLI di Claude).</p>
+  <form method="get" action="/login">
+    <input type="hidden" name="mode" value="paste">
+    <input type="hidden" name="scope" value="full">
+    <button class="primary" type="submit">Riprova con gli scope completi</button>
+  </form>
+"""
+
     if not logged:
         auth_card = f"""<section class="card">
   <h2>Accesso</h2>
-  <p>Il servizio non &egrave; ancora collegato a Claude. Serve un accesso una volta sola:
-     il token resta qui, in questo container, e non viene mai mandato al display.</p>
-  <form method="get" action="/login">
-    <input type="hidden" name="mode" value="loopback">
-    <button class="primary" type="submit">Accedi con Claude</button>
-  </form>
-  <p class="dim small">Il browser deve poter tornare su <code>http://{html.escape(host)}/callback</code>:
-     apri questa pagina dallo stesso indirizzo che userai per accedere (l'indirizzo di rete, non <code>localhost</code>).</p>
-  <details>
-    <summary>Il browser non riesce a tornare indietro?</summary>
-    <p class="small">Usa il codice: si apre la pagina di Anthropic che mostra <code>codice#stato</code>,
-       lo copi e lo incolli qui.</p>
+  <p>Serve una volta sola: poi il servizio rinnova da s&eacute;. Il token resta qui dentro e non
+     viene mai mandato al display.</p>
+  <ol class="small">
+    <li>Premi il pulsante: si apre la pagina di Anthropic.</li>
+    <li>Autorizza: la pagina ti mostra una riga tipo <code>codice#stato</code>.</li>
+    <li>Copia <b>tutta</b> la riga e incollala qui sotto.</li>
+  </ol>
+  <div class="row">
     <form method="get" action="/login">
       <input type="hidden" name="mode" value="paste">
-      <button type="submit">Accedi col codice</button>
+      <button class="primary" type="submit">Accedi con Claude</button>
     </form>
-    <form method="post" action="/paste">
-      <input name="code" placeholder="codice#stato" autocomplete="off" spellcheck="false">
-      <button type="submit">Invia</button>
+  </div>
+  <form method="post" action="/paste">
+    <input name="code" placeholder="codice#stato" autocomplete="off" spellcheck="false">
+    <button type="submit">Invia il codice</button>
+  </form>
+{scope_hint}  <details>
+    <summary>Perch&eacute; non torna indietro da solo?</summary>
+    <p class="small">Il client di Claude accetta come ritorno automatico solo
+       <code>http://localhost:&lt;porta&gt;/callback</code>, non l'indirizzo di rete di questo servizio:
+       da un telefono o da un altro computer quel ritorno finirebbe sul dispositivo sbagliato. Il codice
+       invece funziona da qualunque dispositivo &mdash; ed &egrave; quello che fa
+       <code>claude setup-token</code>.</p>
+    <p class="small">Vuoi comunque il ritorno automatico? Apri un tunnel verso la macchina dove gira il
+       servizio (<code>ssh -L 8790:localhost:8790 root@{html.escape(host)}</code>), poi visita
+       <code>http://localhost:8790/</code> e usa questo pulsante:</p>
+    <form method="get" action="/login">
+      <input type="hidden" name="mode" value="loopback">
+      <button type="submit">Accesso con ritorno automatico</button>
     </form>
   </details>
 </section>"""
@@ -216,6 +239,7 @@ def render_page(status: dict[str, Any], *, host: str, mdns_name: str | None) -> 
   input[type=text], input:not([type]) {{ font: inherit; padding: 8px 10px; border-radius: 9px;
             background: #0f172a; border: 1px solid #334155; color: #e2e8f0; min-width: 220px; }}
   .row {{ display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; align-items: center; }}
+  ol {{ margin: 10px 0; padding-left: 22px; }} ol li {{ margin-bottom: 3px; }}
   form {{ display: inline; }}
   .dim {{ color: #94a3b8; }} .small {{ font-size: 13px; }}
   .ok {{ color: #86efac; }} .warn {{ color: #fbbf24; }}
@@ -320,12 +344,16 @@ def make_handler(app: App, *, dashboard_host: str = "localhost"):
             if route == "/login":
                 if not self._lan_only():
                     return
-                mode = (query.get("mode") or ["loopback"])[0]
-                if mode == "paste":
-                    redirect_uri = config.MANUAL_REDIRECT_URI
+                mode = (query.get("mode") or ["paste"])[0]
+                full = (query.get("scope") or [""])[0] == "full"
+                scopes = config.SCOPES_FULL if full else None
+                if mode == "loopback":
+                    # The Claude client only accepts a localhost redirect: this works when the
+                    # browser runs on the same machine as the service, or through an SSH tunnel.
+                    redirect_uri = f"http://localhost:{config.PORT}/callback"
                 else:
-                    redirect_uri = f"http://{self.headers.get('Host') or dashboard_host}/callback"
-                url, pending = app.client.start_login(redirect_uri)
+                    redirect_uri = config.MANUAL_REDIRECT_URI
+                url, pending = app.client.start_login(redirect_uri, scopes=scopes)
                 app.remember(pending)
                 return self._redirect(url)
             if route == "/callback":

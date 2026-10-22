@@ -15,9 +15,13 @@ ClaudeReset service (Docker)          display (D1 mini + GC9A01)
 ## Run it
 
 ```bash
-mkdir -p data && chmod 700 data
+mkdir -p data
+chown 10001:10001 data      # the container runs as uid 10001, non-root
 docker compose up -d --build
 ```
+
+If you skip the `chown`, the dashboard says so in plain words instead of failing silently: the
+volume is mounted but the container user cannot read it.
 
 Then open `http://<host-lan-address>:8790/` **from the LAN address you will keep using** (not
 `localhost`, unless the container runs on the machine you are browsing from), and click
@@ -27,6 +31,22 @@ page shows `code#state`, and you paste it into the box.
 `network_mode: host` is not optional: mDNS is link-local multicast and Docker's bridge does not
 forward it, so the display would never find the service. With host networking the container
 advertises `_claudereset._tcp` on the host's interfaces.
+
+### Signing in
+
+The button opens Anthropic's page, which hands back a line like `code#state`: paste it into the box.
+That is the flow `claude setup-token` uses, and it is the only one that works from a different device
+than the server.
+
+The Claude client does **not** accept a LAN address as a redirect URI. Automatic return only works
+with `http://localhost:<port>/callback`, i.e. from a browser on the same machine as the service, or
+through a tunnel (`ssh -L 8790:localhost:8790 root@<host>`). The dashboard keeps that button, tucked
+away, for exactly that case — an IP-based redirect is refused by Anthropic with
+*"redirect_uri unsupported by client"*.
+
+Scopes: the default request is narrow (`user:profile user:sessions:claude_code user:inference`) —
+enough to read quota, deliberately without the ability to create API keys. If the usage endpoint
+answers 403 the dashboard offers a one-click retry with the full set the official CLI asks for.
 
 ## Endpoints
 

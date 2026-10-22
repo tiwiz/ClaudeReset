@@ -119,7 +119,7 @@ class ClaudeClient:
         self._get = get_json_fn
 
     # -- login -----------------------------------------------------------
-    def start_login(self, redirect_uri: str) -> tuple[str, PendingLogin]:
+    def start_login(self, redirect_uri: str, scopes: str | None = None) -> tuple[str, PendingLogin]:
         verifier, challenge = pkce_pair()
         pending = PendingLogin(verifier=verifier, state=new_state(), redirect_uri=redirect_uri)
         query = urllib.parse.urlencode(
@@ -128,7 +128,7 @@ class ClaudeClient:
                 "client_id": self.client_id,
                 "response_type": "code",
                 "redirect_uri": redirect_uri,
-                "scope": self.scopes,
+                "scope": scopes or self.scopes,
                 "code_challenge": challenge,
                 "code_challenge_method": "S256",
                 "state": pending.state,
