@@ -85,9 +85,12 @@ def render_page(status: dict[str, Any], *, host: str, mdns_name: str | None) -> 
 
     refresh_expires = status.get("refresh_expires_at")
     refresh_known = status.get("refresh_expiry_known")
+    # The service cannot renew an expired refresh token by itself: when the poller says so, the
+    # page must offer the login form again instead of only "updated now / disconnect".
+    session_dead = "sessione scaduta" in str(status.get("error") or "")
     if refresh_known and refresh_expires:
         days_left = (refresh_expires - now) / 86400
-        if days_left < 2:
+        if days_left < 3:
             refresh_line = (
                 f'<span class="warn">{_fmt_time(refresh_expires)} '
                 f"({_fmt_in(refresh_expires, now)}) — riaccedi prima che scada</span>"
@@ -109,10 +112,17 @@ def render_page(status: dict[str, Any], *, host: str, mdns_name: str | None) -> 
   </form>
 """
 
-    if not logged:
+    if not logged or session_dead:
+        expired_note = ""
+        if session_dead and refresh_expires:
+            expired_note = (
+                f'  <p class="warn small">La sessione è scaduta: il token di refresh è morto '
+                f"{_fmt_time(refresh_expires)} e non si può rinnovare da sé. Riaccedi qui sotto, "
+                f"e il display riparte da solo.</p>\n"
+            )
         auth_card = f"""<section class="card">
   <h2>Accesso</h2>
-  <p>Serve una volta sola: poi il servizio rinnova da s&eacute;. Il token resta qui dentro e non
+{expired_note}  <p>Serve una volta sola: poi il servizio rinnova da s&eacute;. Il token resta qui dentro e non
      viene mai mandato al display.</p>
   <ol class="small">
     <li>Premi il pulsante: si apre la pagina di Anthropic.</li>

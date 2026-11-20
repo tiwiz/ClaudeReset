@@ -22,6 +22,10 @@ from .claude import ClaudeClient, ClaudeError, parse_usage
 # On failures we slow down instead of hammering: 1, 2, 5, 10, 30 minutes, then steady.
 BACKOFF_STEPS = (60, 120, 300, 600, 1800)
 
+# The error ends up on the ring display, which cuts it to 16 characters: the first word must say
+# what to do, not which HTTP status came back.
+SESSION_EXPIRED = "sessione scaduta: riaccedi"
+
 
 def compute_delay(
     *,
@@ -121,13 +125,18 @@ class UsagePoller:
             data = dict(self.data)
             age = self.age()
             stale = age is None or age > self.stale
-            ok = bool(data) and not stale and not self.error
             reset = data.get("r")
             reset7 = data.get("r7")
             now = self.clock()
             reason = self.error
+            # A dead refresh token is worth saying out loud even while the cached number still
+            # looks fresh: after the access token expires nothing will refresh it.
+            session_dead = self.logged_in() and self.session_expired()
+            if not reason and session_dead:
+                reason = SESSION_EXPIRED
             if not reason and not self.logged_in():
                 reason = "non autenticato"
+            ok = bool(data) and not stale and not reason
             return {
                 "v": 1,
                 "ok": 1 if ok else 0,
@@ -170,6 +179,18 @@ class UsagePoller:
             }
 
     # -- fetching --------------------------------------------------------
+    def session_expired(self) -> bool:
+        """True when no refresh token is left, or when its expiry has already passed.
+
+        The refresh token lifetime is absolute (set when the account authorised the client), so
+        refreshing never extends it: once it is gone, only a new login helps.
+        """
+        tok = self.tokens()
+        if not tok.get("refresh_token"):
+            return True
+        expires = tok.get("refresh_expires_at")
+        return bool(expires) and expires - self.clock() <= 0
+
     def _ensure_access_token(self, *, force: bool = False) -> str:
         tok = self.tokens()
         access = tok.get("access_token")
@@ -178,9 +199,15 @@ class UsagePoller:
         if not needs_refresh:
             return access
         refresh_token = tok.get("refresh_token")
-        if not refresh_token:
-            raise ClaudeError("sessione scaduta: serve un nuovo accesso")
-        refreshed = self.client.refresh(refresh_token)
+        if not refresh_token or self.session_expired():
+            raise ClaudeError(SESSION_EXPIRED)
+        try:
+            refreshed = self.client.refresh(refresh_token)
+        except ClaudeError as exc:
+            # 400 invalid_grant is how the token endpoint says "this refresh token is dead".
+            if exc.status in (400, 401):
+                raise ClaudeError(SESSION_EXPIRED, exc.status, exc.body) from exc
+            raise
         saved = self.store.save_token_response(refreshed, previous=tok)
         self.last_token_refresh_at = self.clock()
         if not saved.get("access_token"):
